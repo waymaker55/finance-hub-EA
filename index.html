@@ -3307,58 +3307,49 @@ function connectGoogle() {
   const clientId = state.settings.googleClientId;
   if (!clientId) { toast('Add Client ID in Settings first'); return; }
 
-  // Use the exact origin — no path, no trailing slash issues
-  const origin = window.location.origin;  // e.g. https://yourapp.netlify.app
+  // The redirect_uri must exactly match what is registered in Google Cloud Console
+  // Use the full page URL without query string or hash
+  const redirectUri = window.location.origin + window.location.pathname;
 
   const scope = 'https://www.googleapis.com/auth/calendar.events';
 
-  // Build the OAuth URL
-  // For implicit flow (token in fragment), redirect_uri must match
-  // an Authorised JavaScript Origin registered in Google Cloud Console
   const params = new URLSearchParams({
     client_id:     clientId,
-    redirect_uri:  origin,
+    redirect_uri:  redirectUri,
     response_type: 'token',
     scope:         scope,
-    include_granted_scopes: 'true',
-    state: 'gcal_auth'
+    include_granted_scopes: 'true'
   });
 
   const authUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' + params.toString();
 
-  // Open in a popup so the token comes back without a full page reload
+  // Open popup
   const popup = window.open(authUrl, 'gcal_oauth',
     'width=500,height=600,scrollbars=yes,resizable=yes');
 
-  // Poll for the token in the popup URL fragment
   const timer = setInterval(function() {
     try {
       if (!popup || popup.closed) {
         clearInterval(timer);
-        toast('Login cancelled');
         return;
       }
       const popupUrl = popup.location.href;
       if (popupUrl && popupUrl.includes('access_token')) {
         clearInterval(timer);
         popup.close();
-        // Parse token from fragment
         const fragment = popupUrl.split('#')[1] || '';
         const tokenParams = new URLSearchParams(fragment);
         const token = tokenParams.get('access_token');
         const expiresIn = parseInt(tokenParams.get('expires_in') || '3600');
         if (token) {
-          state.googleToken = {
-            token,
-            expiry: Date.now() + expiresIn * 1000
-          };
+          state.googleToken = { token, expiry: Date.now() + expiresIn * 1000 };
           saveState();
           toast('✓ Google Calendar connected!');
           if (moreTab === 'calendar') renderMoreCalendar();
         }
       }
     } catch(e) {
-      // Cross-origin errors are expected while Google is loading — ignore them
+      // Cross-origin errors while Google loads — ignore
     }
   }, 500);
 }
