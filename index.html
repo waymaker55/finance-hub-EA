@@ -3556,7 +3556,7 @@ function disconnectGoogle() {
   toast('Disconnected');
 }
 
-async async function syncShiftsToCalendar() {
+async function syncShiftsToCalendar() {
   const tokenData = state.googleToken || googleToken;
   if (!tokenData) { toast('Not connected to Google'); return; }
   // Handle both string token (checkGoogleCallback) and object token (connectGoogle popup)
