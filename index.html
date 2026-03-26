@@ -2340,9 +2340,11 @@ function renderLoans() {
     <div class="section-title" style="margin-top:4px">Extra Payments (${eur(l682.extraPayments.reduce((a,p)=>a+p.amount,0))} total)</div>
     ${l682.extraPayments.map(p => `
     <div class="inv-buy-row">${fmtDate(p.date)}<span style="color:var(--green)">${eur(p.amount)}</span></div>`).join('')}
+    ${(state.loans.l682.monthlyPayments||[]).length ? `<div class="section-title" style="margin-top:4px;color:var(--accent2)">Monthly Payments (${eur((state.loans.l682.monthlyPayments||[]).reduce((a,p)=>a+p.amount,0))} total)</div>${(state.loans.l682.monthlyPayments||[]).slice(-5).reverse().map(p=>`<div class="loan-history-row"><span>${p.date}${ p.note ? ' — '+p.note : ''}</span><span style="color:var(--green)">-${eur(p.amount)}</span></div>`).join('')}` : ''}
     <div style="display:flex;gap:8px;margin-top:12px">
-      <button class="btn btn-primary btn-sm" style="flex:1" onclick="openAddExtraPayment('l682')">+ Extra Payment</button>
-      <button class="btn btn-ghost btn-sm" style="flex:1" onclick="openUpdateBalance('l682')">Update Balance</button>
+      <button class="btn btn-primary btn-sm" style="flex:1" onclick="openAddMonthlyPayment('l682')">+ Monthly</button>
+      <button class="btn btn-secondary btn-sm" style="flex:1" onclick="openAddExtraPayment('l682')">+ Extra</button>
+      <button class="btn btn-ghost btn-sm" style="flex:1" onclick="openUpdateBalance('l682')">Balance</button>
     </div>
   </div>
 
@@ -2374,9 +2376,11 @@ function renderLoans() {
       <div class="inv-buy-row">${fmtDate(p.date)}<span style="color:var(--green)">${eur(p.amount)}</span></div>`).join('')}
     </div>
     ${l336.extraPayments.length>5?`<div style="font-size:11px;color:var(--text3);text-align:center;padding:4px">+ ${l336.extraPayments.length-5} more · <span style="color:var(--accent);cursor:pointer" onclick="showAllEP336()">Show all</span></div>`:''}
+    ${(state.loans.l336.monthlyPayments||[]).length ? `<div class="section-title" style="margin-top:4px;color:var(--accent2)">Monthly Payments (${eur((state.loans.l336.monthlyPayments||[]).reduce((a,p)=>a+p.amount,0))} total)</div>${(state.loans.l336.monthlyPayments||[]).slice(-5).reverse().map(p=>`<div class="loan-history-row"><span>${p.date}${ p.note ? ' — '+p.note : ''}</span><span style="color:var(--green)">-${eur(p.amount)}</span></div>`).join('')}` : ''}
     <div style="display:flex;gap:8px;margin-top:12px">
-      <button class="btn btn-primary btn-sm" style="flex:1" onclick="openAddExtraPayment('l336')">+ Extra Payment</button>
-      <button class="btn btn-ghost btn-sm" style="flex:1" onclick="openUpdateBalance('l336')">Update Balance</button>
+      <button class="btn btn-primary btn-sm" style="flex:1" onclick="openAddMonthlyPayment('l336')">+ Monthly</button>
+      <button class="btn btn-secondary btn-sm" style="flex:1" onclick="openAddExtraPayment('l336')">+ Extra</button>
+      <button class="btn btn-ghost btn-sm" style="flex:1" onclick="openUpdateBalance('l336')">Balance</button>
     </div>
   </div>
 
@@ -2433,6 +2437,29 @@ function saveBalance(loanId) {
 
 let investTab = 'etfs';
 let expandedInv = {};
+
+function openAddMonthlyPayment(loanId) {
+  const loan = state.loans[loanId];
+  const today = new Date().toISOString().slice(0,10);
+  openModal('Log Monthly Payment', `
+    <div class="field"><label>Date</label><input type="date" id="mp-date" value="${today}"></div>
+    <div class="field"><label>Amount (€)</label><input type="number" id="mp-amount" value="${loan.monthly.toFixed(2)}" step="0.01" min="0"></div>
+    <div class="field"><label>Note (optional)</label><input type="text" id="mp-note" placeholder="e.g. March instalment"></div>
+    <button class="btn btn-primary" style="width:100%;margin-top:8px" onclick="saveMonthlyPayment('${loanId}')">Save Payment</button>
+  `);
+}
+
+function saveMonthlyPayment(loanId) {
+  const date = document.getElementById('mp-date').value;
+  const amount = parseFloat(document.getElementById('mp-amount').value);
+  const note = document.getElementById('mp-note').value.trim();
+  if (!amount || amount <= 0) return toast('Enter a valid payment amount');
+  if (!state.loans[loanId].monthlyPayments) state.loans[loanId].monthlyPayments = [];
+  state.loans[loanId].monthlyPayments.push({date, amount, note});
+  state.loans[loanId].currentBalance = Math.max(0, (state.loans[loanId].currentBalance||0) - amount);
+  closeModal(); saveState(); renderLoans(); toast('Monthly payment logged ✓');
+}
+
 
 function renderInvest() {
   const el = document.getElementById('page-invest');
