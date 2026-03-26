@@ -2803,7 +2803,7 @@ function renderInvestNaira() {
 
       if (isEquity) {
         // ── EQUITY: stats grid ──
-        const avgBuy = f.avgBuyPrice || (f.units>0 ? (f.invested||0)/f.units : 0);
+        const avgBuy = f.units>0 ? (f.invested||0)/f.units : (f.avgBuyPrice || 0);
         html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px">'
           + '<div class="stat-card"><div class="label">Units Held</div><div class="val">' + fmt(f.units||0,4) + '</div></div>'
           + '<div class="stat-card"><div class="label">Current Value</div><div class="val" style="color:var(--green)">₦' + fmt(f.currentValue||0,3) + '</div></div>'
@@ -3295,7 +3295,7 @@ function handleScanFile(input) {
     }
   };
   if (file.type.startsWith('image/')) reader.readAsDataURL(file);
-  else reader.readAsDataURL(file);
+  else { document.getElementById('scan-result-area').innerHTML = '<div style="color:var(--yellow);padding:8px">Only image files (JPG, PNG, etc.) are supported for scanning. Please use an image instead of a PDF.</div>'; }
 }
 
 function handleScanDrop(e) {
@@ -3539,7 +3539,8 @@ function checkGoogleCallback() {
   if (hash.includes('access_token')) {
     const params = new URLSearchParams(hash.slice(1));
     googleToken = params.get('access_token');
-    state.googleToken = googleToken;
+    const expiresIn = parseInt(params.get('expires_in') || '3600', 10);
+    state.googleToken = { token: googleToken, expiry: Date.now() + expiresIn * 1000 };
     saveState();
     window.history.replaceState(null,'',window.location.pathname);
     toast('Google Calendar connected ✓');
@@ -3555,7 +3556,7 @@ function disconnectGoogle() {
   toast('Disconnected');
 }
 
-async function syncShiftsToCalendar() {
+async async function syncShiftsToCalendar() {
   const tokenData = state.googleToken || googleToken;
   if (!tokenData) { toast('Not connected to Google'); return; }
   // Handle both string token (checkGoogleCallback) and object token (connectGoogle popup)
@@ -3581,7 +3582,7 @@ async function syncShiftsToCalendar() {
         body: JSON.stringify(event)
       });
       synced++;
-    } catch(e) {}
+    } catch(e) { state.googleToken = null; saveState(); toast('Calendar sync failed – token may be expired. Please reconnect Google Calendar.'); }
   }
   toast(`${synced} shifts synced to Calendar ✓`);
 }
