@@ -1408,7 +1408,7 @@ function renderBudgetOverview() {
     const rows=group.subs.filter(function(k){return (bud[k]||0)>0||(act[k]||0)>0;});
     if (!rows.length) continue;
 
-    html += '<div class="section-title">'+group.label+'</div>'
+    html += '<div class="section-title" style="display:flex;align-items:center;justify-content:space-between">'+group.label+'<span data-gid="'+group.id+'" data-ym="'+ym+'" onclick="manageCategoryBtn(this)" style="cursor:pointer;padding:2px 6px;color:var(--text3)" title="Manage">⚙</span></div>'
       +'<div class="card" style="padding:0 16px">'
       +'<div style="display:grid;grid-template-columns:1fr 68px 76px;padding:8px 0 6px;border-bottom:1px solid var(--border2)">'
       +'<span style="font-size:10px;font-weight:700;color:var(--text3);letter-spacing:.5px;text-transform:uppercase">CATEGORY</span>'
@@ -1737,6 +1737,75 @@ function saveMonthIncome(ym) {
 }
 
 
+function saveMainCategory(ym) {
+  const name = document.getElementById('mc-name')?.value?.trim();
+  if (!name) return toast('Enter a category name');
+  const MK=['2026-01','2026-02','2026-03','2026-04','2026-05','2026-06','2026-07','2026-08','2026-09','2026-10','2026-11','2026-12'];
+  const months = MK.filter(m => document.getElementById('mc-'+m)?.checked);
+  if (!months.length) return toast('Select at least one month');
+  if (!state.budgetSchema) state.budgetSchema = JSON.parse(JSON.stringify(SEED_BUDGET_SCHEMA));
+  const id = name.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');
+  if (!state.budgetSchema.groups.find(g => g.id === id)) {
+    state.budgetSchema.groups.push({ id, label: name.toUpperCase(), subs: [] });
+  }
+  months.forEach(m => initBudgetMonth(m));
+  closeModal(); saveState(); renderBudgetOverview(); toast('Category added ✓');
+}
+function saveSubCategory(ym) {
+  const groupId = document.getElementById('sc-group')?.value;
+  const name = document.getElementById('sc-name')?.value?.trim();
+  const budget = parseFloat(document.getElementById('sc-budget')?.value || 0);
+  if (!name) return toast('Enter a sub-category name');
+  if (!groupId) return toast('Select a group');
+  const MK=['2026-01','2026-02','2026-03','2026-04','2026-05','2026-06','2026-07','2026-08','2026-09','2026-10','2026-11','2026-12'];
+  const months = MK.filter(m => document.getElementById('sc-'+m)?.checked);
+  if (!months.length) return toast('Select at least one month');
+  if (!state.budgetSchema) state.budgetSchema = JSON.parse(JSON.stringify(SEED_BUDGET_SCHEMA));
+  const group = state.budgetSchema.groups.find(g => g.id === groupId);
+  if (!group) return toast('Group not found');
+  const subId = name.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');
+  if (!group.subs.includes(subId)) group.subs.push(subId);
+  if (!state.budgetSchema.labels) state.budgetSchema.labels = {};
+  state.budgetSchema.labels[subId] = name;
+  months.forEach(m => {
+    initBudgetMonth(m);
+    if (budget > 0 && state.budget && state.budget.months && state.budget.months[m]) {
+      if (!state.budget.months[m].expenses) state.budget.months[m].expenses = {};
+      if (state.budget.months[m].expenses[subId] === undefined) state.budget.months[m].expenses[subId] = budget;
+    }
+  });
+  closeModal(); saveState(); renderBudgetOverview(); toast('Sub-category added ✓');
+}
+function manageCategory(groupId, ym) {
+  if (!state.budgetSchema) return;
+  const group = state.budgetSchema.groups.find(g => g.id === groupId);
+  if (!group) return;
+  const lbl = k => (state.budgetSchema.labels && state.budgetSchema.labels[k]) || k;
+  const subsHtml = group.subs.length ? group.subs.map(s =>
+    '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border2)">'
+    + '<span style="color:var(--text2);font-size:13px">'+lbl(s)+'</span>'
+    + '<button class="btn btn-ghost btn-sm" style="color:var(--red)" data-gid="'+groupId+'" data-sub="'+s+'" data-ym="'+ym+'" onclick="deleteSubCategoryBtn(this)">Delete</button>'
+    + '</div>'
+  ).join('') : '<div style="color:var(--text3);font-size:12px;padding:8px 0">No sub-categories yet</div>';
+  openModal('Manage: '+group.label,
+    '<div>'+subsHtml+'</div>'
+    +'<div style="margin-top:14px"><button class="btn btn-ghost btn-sm" style="width:100%;color:var(--red)" data-gid="'+groupId+'" data-ym="'+ym+'" onclick="deleteMainCategoryBtn(this)">Delete Entire Category</button></div>'
+  );
+}
+function manageCategoryBtn(btn) { manageCategory(btn.dataset.gid, btn.dataset.ym); }
+function deleteMainCategoryBtn(btn) { deleteMainCategory(btn.dataset.gid, btn.dataset.ym); }
+function deleteSubCategoryBtn(btn) { deleteSubCategory(btn.dataset.gid, btn.dataset.sub, btn.dataset.ym); }
+function deleteMainCategory(groupId, ym) {
+  if (!state.budgetSchema) return;
+  state.budgetSchema.groups = state.budgetSchema.groups.filter(g => g.id !== groupId);
+  closeModal(); saveState(); renderBudgetOverview(); toast('Category deleted');
+}
+function deleteSubCategory(groupId, subId, ym) {
+  if (!state.budgetSchema) return;
+  const group = state.budgetSchema.groups.find(g => g.id === groupId);
+  if (group) group.subs = group.subs.filter(s => s !== subId);
+  saveState(); renderBudgetOverview(); manageCategory(groupId, ym); toast('Sub-category deleted');
+}
 function saveMainCategoryBtn(btn) { saveMainCategory(btn.dataset.ym); }
 function saveSubCategoryBtn(btn)  { saveSubCategory(btn.dataset.ym); }
 function saveMonthIncomeBtn(btn)  { saveMonthIncome(btn.dataset.ym); }
@@ -2341,10 +2410,11 @@ function renderLoans() {
     ${l682.extraPayments.map(p => `
     <div class="inv-buy-row">${fmtDate(p.date)}<span style="color:var(--green)">${eur(p.amount)}</span></div>`).join('')}
     ${(state.loans.l682.monthlyPayments||[]).length ? `<div class="section-title" style="margin-top:4px;color:var(--accent2)">Monthly Payments (${eur((state.loans.l682.monthlyPayments||[]).reduce((a,p)=>a+p.amount,0))} total)</div>${(state.loans.l682.monthlyPayments||[]).slice(-5).reverse().map(p=>`<div class="loan-history-row"><span>${p.date}${ p.note ? ' — '+p.note : ''}</span><span style="color:var(--green)">-${eur(p.amount)}</span></div>`).join('')}` : ''}
-    <div style="display:flex;gap:8px;margin-top:12px">
-      <button class="btn btn-primary btn-sm" style="flex:1" onclick="openAddMonthlyPayment('l682')">+ Monthly</button>
-      <button class="btn btn-secondary btn-sm" style="flex:1" onclick="openAddExtraPayment('l682')">+ Extra</button>
-      <button class="btn btn-ghost btn-sm" style="flex:1" onclick="openUpdateBalance('l682')">Balance</button>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:12px">
+      <button class="btn btn-primary btn-sm" onclick="openAddMonthlyPayment('l682')">+ Monthly</button>
+      <button class="btn btn-secondary btn-sm" onclick="openAddExtraPayment('l682')">+ Extra</button>
+      <button class="btn btn-ghost btn-sm" onclick="openAddInterestCharge('l682')">+ Interest</button>
+      <button class="btn btn-ghost btn-sm" onclick="openUpdateBalance('l682')">Balance</button>
     </div>
   </div>
 
@@ -2377,10 +2447,11 @@ function renderLoans() {
     </div>
     ${l336.extraPayments.length>5?`<div style="font-size:11px;color:var(--text3);text-align:center;padding:4px">+ ${l336.extraPayments.length-5} more · <span style="color:var(--accent);cursor:pointer" onclick="showAllEP336()">Show all</span></div>`:''}
     ${(state.loans.l336.monthlyPayments||[]).length ? `<div class="section-title" style="margin-top:4px;color:var(--accent2)">Monthly Payments (${eur((state.loans.l336.monthlyPayments||[]).reduce((a,p)=>a+p.amount,0))} total)</div>${(state.loans.l336.monthlyPayments||[]).slice(-5).reverse().map(p=>`<div class="loan-history-row"><span>${p.date}${ p.note ? ' — '+p.note : ''}</span><span style="color:var(--green)">-${eur(p.amount)}</span></div>`).join('')}` : ''}
-    <div style="display:flex;gap:8px;margin-top:12px">
-      <button class="btn btn-primary btn-sm" style="flex:1" onclick="openAddMonthlyPayment('l336')">+ Monthly</button>
-      <button class="btn btn-secondary btn-sm" style="flex:1" onclick="openAddExtraPayment('l336')">+ Extra</button>
-      <button class="btn btn-ghost btn-sm" style="flex:1" onclick="openUpdateBalance('l336')">Balance</button>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:12px">
+      <button class="btn btn-primary btn-sm" onclick="openAddMonthlyPayment('l336')">+ Monthly</button>
+      <button class="btn btn-secondary btn-sm" onclick="openAddExtraPayment('l336')">+ Extra</button>
+      <button class="btn btn-ghost btn-sm" onclick="openAddInterestCharge('l336')">+ Interest</button>
+      <button class="btn btn-ghost btn-sm" onclick="openUpdateBalance('l336')">Balance</button>
     </div>
   </div>
 
@@ -2461,6 +2532,27 @@ function saveMonthlyPayment(loanId) {
 }
 
 
+function openAddInterestCharge(loanId) {
+  const loan = state.loans[loanId];
+  const today = new Date().toISOString().slice(0,10);
+  const estInterest = loan.rate && loan.currentBalance ? (loan.currentBalance * (loan.rate/100) / 12).toFixed(2) : '0.00';
+  openModal('Log Interest Charge',
+    '<div class="field"><label>Date</label><input type="date" id="ic-date" value="'+today+'"></div>'
+    +'<div class="field"><label>Amount (€)</label><input type="number" id="ic-amount" value="'+estInterest+'" step="0.01" min="0"></div>'
+    +'<div class="field"><label>Note (optional)</label><input type="text" id="ic-note" placeholder="e.g. March interest"></div>'
+    +'<button class="btn btn-primary" style="width:100%;margin-top:8px" onclick="saveInterestCharge(''+loanId+'')">Log Interest</button>'
+  );
+}
+function saveInterestCharge(loanId) {
+  const date = document.getElementById('ic-date').value;
+  const amount = parseFloat(document.getElementById('ic-amount').value);
+  const note = document.getElementById('ic-note').value.trim();
+  if (!amount || amount <= 0) return toast('Enter a valid amount');
+  if (!state.loans[loanId].interestCharges) state.loans[loanId].interestCharges = [];
+  state.loans[loanId].interestCharges.push({date, amount, note});
+  state.loans[loanId].currentBalance = (state.loans[loanId].currentBalance||0) + amount;
+  closeModal(); saveState(); renderLoans(); toast('Interest logged ✓');
+}
 function renderInvest() {
   const el = document.getElementById('page-invest');
   el.innerHTML = `
