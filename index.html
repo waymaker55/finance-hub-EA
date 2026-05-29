@@ -291,6 +291,81 @@ body{
 .inv-sum-val{font-size:23px;font-weight:800;font-family:var(--mono)}
 .inv-sum-meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px;font-size:11px;color:var(--text2)}
 .dot-sep{color:var(--text3)}
+
+/* ══════════════════════════════════════════════════════════
+   DESKTOP / WEB LAYOUT (≥900px) — sidebar nav + wide canvas
+   Mobile (<900px) keeps the original phone layout untouched.
+   ══════════════════════════════════════════════════════════ */
+@media (min-width: 900px){
+  :root{ --sidebar-w: 236px; }
+
+  html,body{ overflow:auto; }
+  body{ max-width:none; margin:0; flex-direction:row; min-height:100vh; }
+
+  /* Bottom tab bar → fixed left sidebar */
+  #nav{
+    position:fixed; top:0; left:0; bottom:auto; transform:none;
+    width:var(--sidebar-w); height:100vh; max-width:none;
+    flex-direction:column; align-items:stretch; justify-content:flex-start;
+    gap:4px; padding:22px 14px;
+    border-top:none; border-right:1px solid var(--border);
+    background:rgba(12,12,18,.85); box-shadow:none;
+  }
+  #nav::before{
+    content:'⚡  Finance Hub';
+    display:block; font-size:17px; font-weight:800; letter-spacing:-.3px;
+    color:var(--text); padding:6px 12px 20px; margin-bottom:6px;
+    border-bottom:1px solid var(--border);
+  }
+  .nav-btn{
+    flex-direction:row; justify-content:flex-start; gap:13px;
+    width:100%; min-width:0; padding:11px 14px;
+    font-size:13.5px; font-weight:600; text-transform:none; letter-spacing:0;
+    border-radius:10px; color:var(--text2);
+  }
+  .nav-btn .ico{ font-size:19px; }
+  .nav-btn:hover{ background:var(--bg3); color:var(--text); }
+  .nav-btn.active{ background:rgba(124,111,255,.14); color:var(--accent); }
+  .nav-btn.active .ico{ transform:none; }
+  .nav-btn.active::before{ display:none; }   /* drop the mobile top-indicator bar */
+
+  /* Content canvas shifts past the sidebar and gets room to breathe */
+  #main{
+    margin-left:var(--sidebar-w);
+    padding:36px 48px 56px;
+    height:100vh;
+  }
+  #main > .page{ max-width:940px; margin:0 auto; }
+  .page-title{ font-size:28px; }
+
+  /* Dashboard becomes a real 2-column dashboard.
+     Children order: 1=header, 2=income hero, 3=stat grid2 → span full width;
+     the remaining cards (loans / tithe / savings) flow into two columns. */
+  #page-dash.active{ display:grid; grid-template-columns:1fr 1fr; gap:14px; align-items:start; }
+  #page-dash > *:nth-child(1),
+  #page-dash > *:nth-child(2),
+  #page-dash > *:nth-child(3){ grid-column:1 / -1; }
+
+  /* Modal: bottom sheet → centered dialog */
+  #modal-overlay{ align-items:center; }
+  #modal-box{
+    max-width:480px; border-radius:var(--radius);
+    animation:fhDialogIn .2s cubic-bezier(.4,0,.2,1);
+  }
+  @keyframes fhDialogIn{ from{opacity:0;transform:translateY(10px) scale(.98)} to{opacity:1;transform:none} }
+
+  /* Toast centers over the content area, not the whole window */
+  #toast{ left:calc(50% + var(--sidebar-w)/2); }
+
+  /* Hover affordances that only make sense with a pointer */
+  .card[onclick]:hover{ border-color:var(--border2); transform:translateY(-1px); }
+  .chip{ cursor:pointer; }
+}
+
+/* Wider desktops: cap the canvas and center it for readability */
+@media (min-width: 1280px){
+  #main > .page{ max-width:1040px; }
+}
 </style>
 </head>
 <body>
