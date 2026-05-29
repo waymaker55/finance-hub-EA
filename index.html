@@ -271,6 +271,26 @@ body{
 }
 
 ::selection{background:rgba(124,111,255,.4);color:#fff}
+
+/* ── INVEST: portfolio hero, allocation bar, gain pills ── */
+.inv-hero{background:linear-gradient(135deg,rgba(124,111,255,.20),rgba(62,207,142,.07));border-color:rgba(124,111,255,.35);margin-bottom:14px}
+.inv-hero-val{font-size:34px;font-weight:800;font-family:var(--mono);letter-spacing:-1px;margin-top:2px;line-height:1.05}
+.inv-hero-row{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
+.inv-hero-sub{font-size:12px;color:var(--text2)}
+.gain-pill{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:99px;font-size:12px;font-weight:700;font-family:var(--mono);white-space:nowrap}
+.gain-pill.up{background:rgba(62,207,142,.16);color:var(--green)}
+.gain-pill.down{background:rgba(255,92,92,.16);color:var(--red)}
+.alloc-bar{display:flex;height:10px;border-radius:99px;overflow:hidden;margin:16px 0 12px;background:rgba(255,255,255,.05);gap:2px}
+.alloc-seg{transition:flex .55s cubic-bezier(.4,0,.2,1);min-width:3px}
+.alloc-legend{display:grid;grid-template-columns:1fr 1fr;gap:7px 16px}
+.alloc-leg{display:flex;align-items:center;gap:7px;font-size:12px;min-width:0}
+.alloc-dot{width:9px;height:9px;border-radius:3px;flex-shrink:0}
+.alloc-leg-l{color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.alloc-leg-v{margin-left:auto;font-family:var(--mono);color:var(--text);font-weight:600;font-size:11px;white-space:nowrap}
+.inv-summary{margin-top:6px}
+.inv-sum-val{font-size:23px;font-weight:800;font-family:var(--mono)}
+.inv-sum-meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px;font-size:11px;color:var(--text2)}
+.dot-sep{color:var(--text3)}
 </style>
 </head>
 <body>
@@ -2632,26 +2652,129 @@ function saveInterestCharge(loanId) {
   state.loans[loanId].currentBalance = (state.loans[loanId].currentBalance||0) + amount;
   closeModal(); saveState(); renderLoans(); toast('Interest logged ✓');
 }
+// Bucket colours/labels shared by hero allocation + tab chips
+const INV_BUCKETS = [
+  ['etfs',   'ARK ETFs', '📦', 'var(--accent)'],
+  ['stocks', 'Stocks',   '📊', 'var(--blue)'],
+  ['crypto', 'Crypto',   '🔑', 'var(--orange)'],
+  ['naira',  'Naira',    '₦',  'var(--green)']
+];
+
+// Aggregate every holding into a common EUR view (falls back to cost basis when no live price is set)
+function investTotals() {
+  const px = state.invPrices || {};
+  const NGN = 1650;
+  const inv = state.investments || {};
+
+  function usdBucket(arr, withDivs) {
+    let invested = 0, value = 0, fees = 0, divs = 0, priced = 0, count = 0;
+    for (const a of (arr || [])) {
+      count++;
+      const cost = a.costEUR || 0;
+      invested += cost;
+      fees += a.totalFeesEUR || 0;
+      if (withDivs) divs += a.totalDivsEUR || 0;
+      const pl = px[a.ticker];
+      const cEUR = (pl && pl.price && pl.rate) ? pl.price / pl.rate : null;
+      if (cEUR != null) { value += a.units * cEUR; priced++; } else { value += cost; }
+    }
+    return { invested, value, fees, divs, priced, count };
+  }
+
+  const etfs = usdBucket(inv.etfs, false);
+  const stocks = usdBucket(inv.stocks, true);
+
+  let cInv = 0, cVal = 0, cCount = 0, cPriced = 0;
+  for (const c of (inv.crypto || [])) {
+    cCount++;
+    const cost = c.costEUR || 0; cInv += cost;
+    const pl = px[c.ticker];
+    const cEUR = (pl && pl.price) ? pl.price / (pl.rate || 1.08) : null;
+    if (cEUR != null) { cVal += c.units * cEUR; cPriced++; } else { cVal += cost; }
+  }
+  const crypto = { invested: cInv, value: cVal, fees: 0, divs: 0, priced: cPriced, count: cCount };
+
+  let nInvNGN = 0, nValNGN = 0, nCount = 0;
+  for (const f of (inv.naira || [])) {
+    nCount++;
+    nInvNGN += f.invested || 0;
+    nValNGN += (f.fundType === 'equity') ? (f.currentValue || (f.units * (f.unitPrice || 0))) : (f.balance || 0);
+  }
+  const naira = { invested: nInvNGN / NGN, value: nValNGN / NGN, fees: 0, divs: 0,
+                  ngnInvested: nInvNGN, ngnValue: nValNGN, count: nCount };
+
+  const buckets = { etfs, stocks, crypto, naira };
+  let invested = 0, value = 0, divs = 0, fees = 0;
+  for (const k in buckets) { invested += buckets[k].invested; value += buckets[k].value; divs += buckets[k].divs; fees += buckets[k].fees; }
+  const ret = value + divs - invested;
+  const retPct = invested > 0 ? ret / invested * 100 : 0;
+  return { buckets, invested, value, divs, fees, ret, retPct, NGN };
+}
+
+// Modern per-tab summary card (current value + total return pill)
+function investSummaryCard(title, b, extra) {
+  const ret = b.value + (b.divs || 0) - b.invested;
+  const up = ret >= 0;
+  const pct = b.invested > 0 ? ret / b.invested * 100 : 0;
+  return '<div class="card inv-summary">'
+    + '<div class="card-label">' + title + '</div>'
+    + '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap">'
+    + '<div class="inv-sum-val">' + eur(b.value) + '</div>'
+    + '<span class="gain-pill ' + (up ? 'up' : 'down') + '">' + (up ? '▲ +' : '▼ ') + eur(ret) + ' (' + (up ? '+' : '') + pct.toFixed(2) + '%)</span>'
+    + '</div>'
+    + '<div class="inv-sum-meta"><span>' + eur(b.invested) + ' invested</span>'
+    + (b.fees ? '<span class="dot-sep">·</span><span style="color:var(--red)">' + eur(b.fees) + ' fees</span>' : '')
+    + (b.divs ? '<span class="dot-sep">·</span><span style="color:var(--green)">+' + eur(b.divs) + ' divs</span>' : '')
+    + (extra || '')
+    + '</div></div>';
+}
+
 function renderInvest() {
   const el = document.getElementById('page-invest');
+  const T = investTotals();
+  const up = T.ret >= 0;
+
+  const alloc = INV_BUCKETS.map(([k,l,i,c]) => ({ l, c, val: T.buckets[k].value })).filter(s => s.val > 0);
+  const segHtml = alloc.length
+    ? alloc.map(s => `<div class="alloc-seg" style="flex:${s.val};background:${s.c}"></div>`).join('')
+    : `<div class="alloc-seg" style="flex:1;background:var(--border2)"></div>`;
+  const legendHtml = INV_BUCKETS.map(([k,l,i,c]) => {
+    const v = T.buckets[k].value;
+    const pct = T.value > 0 ? v / T.value * 100 : 0;
+    return `<div class="alloc-leg"><span class="alloc-dot" style="background:${c}"></span><span class="alloc-leg-l">${i} ${l}</span><span class="alloc-leg-v">${pct.toFixed(0)}%</span></div>`;
+  }).join('');
+
   el.innerHTML = `
   <div class="page-header">
     <div><div class="page-title">Investments</div><div class="page-sub">PORTFOLIO</div></div>
   </div>
+
+  <div class="card inv-hero">
+    <div class="card-label">Total Portfolio Value</div>
+    <div class="inv-hero-val">${eur(T.value)}</div>
+    <div class="inv-hero-row">
+      <span class="gain-pill ${up?'up':'down'}">${up?'▲ +':'▼ '}${eur(T.ret)} (${up?'+':''}${T.retPct.toFixed(2)}%)</span>
+      <span class="inv-hero-sub">${eur(T.invested)} invested${T.divs?` · +${eur(T.divs)} divs`:''}</span>
+    </div>
+    <div class="alloc-bar">${segHtml}</div>
+    <div class="alloc-legend">${legendHtml}</div>
+  </div>
+
   <div class="chip-scroll" style="margin-bottom:16px">
-    ${[['etfs','📦 ARK ETFs'],['stocks','📊 Stocks'],['crypto','🔑 Crypto'],['naira','₦ Naira']].map(([t,l])=>
-      `<div class="chip ${investTab===t?'active':''}" onclick="investTab='${t}';renderInvest()">${l}</div>`).join('')}
+    ${INV_BUCKETS.map(([t,l,i]) =>
+      `<div class="chip ${investTab===t?'active':''}" onclick="investTab='${t}';renderInvest()">${i} ${l}</div>`).join('')}
   </div>
   <div id="invest-content"></div>`;
 
-  if (investTab==='etfs') renderInvestETFs();
-  else if (investTab==='stocks') renderInvestStocks();
-  else if (investTab==='crypto') renderInvestCrypto();
-  else renderInvestNaira();
+  if (investTab==='etfs') renderInvestETFs(T);
+  else if (investTab==='stocks') renderInvestStocks(T);
+  else if (investTab==='crypto') renderInvestCrypto(T);
+  else renderInvestNaira(T);
 }
 
-function renderInvestETFs() {
+function renderInvestETFs(T) {
   const el = document.getElementById('invest-content');
+  T = T || investTotals();
   let totalCost = 0, totalFees = 0;
   let html = '';
 
@@ -2760,17 +2883,14 @@ function renderInvestETFs() {
     html += '</div>';
   }
 
-  html += '<div class="card" style="border-color:var(--accent);background:rgba(124,111,255,.06);margin-top:4px">'
-    + '<div class="card-label">Total ETF Portfolio</div>'
-    + '<div style="font-size:22px;font-weight:800;font-family:var(--mono)">' + eur(totalCost) + '</div>'
-    + '<div style="font-size:11px;color:var(--red);margin-top:4px">Total fees paid: ' + eur(totalFees) + '</div>'
-    + '</div>'
+  html += investSummaryCard('ARK ETF Portfolio', T.buckets.etfs)
     + '<button class="btn btn-ghost btn-full" style="margin-top:8px" onclick="openAddNewAsset(\'etf\')">+ Add ETF</button>';
   el.innerHTML = html;
 }
 
-function renderInvestStocks() {
+function renderInvestStocks(T) {
   const el = document.getElementById('invest-content');
+  T = T || investTotals();
   let totalCost = 0, totalFees = 0, totalDivs = 0;
   let html = '';
 
@@ -2876,13 +2996,7 @@ function renderInvestStocks() {
     html += '</div>';
   }
 
-  html += '<div class="card" style="border-color:var(--accent);background:rgba(124,111,255,.06);margin-top:4px">'
-    + '<div class="card-label">Every Tree a Forest — Total</div>'
-    + '<div style="font-size:22px;font-weight:800;font-family:var(--mono)">' + eur(totalCost) + '</div>'
-    + '<div style="display:flex;gap:12px;margin-top:4px;font-size:11px">'
-    + '<span style="color:var(--red)">fees: ' + eur(totalFees) + '</span>'
-    + '<span style="color:var(--green)">dividends: +' + eur(totalDivs) + '</span>'
-    + '</div></div>'
+  html += investSummaryCard('Every Tree a Forest — Stocks', T.buckets.stocks)
     + '<button class="btn btn-ghost btn-full" style="margin-top:8px" onclick="openAddNewAsset(\'stock\')">+ Add Stock to Every Tree a Forest</button>';
   el.innerHTML = html;
 }
@@ -2914,8 +3028,9 @@ function saveNewAsset(assetType) {
 }
 
 
-function renderInvestCrypto() {
+function renderInvestCrypto(T) {
   const el = document.getElementById('invest-content');
+  T = T || investTotals();
   let totalCost = 0;
   let html = '';
 
@@ -2948,13 +3063,14 @@ function renderInvestCrypto() {
     </div>`:''}`
   }
 
-  html += `<div class="stat-card" style="margin-top:12px"><div class="label">Total Crypto Cost Basis</div><div class="val">${eur(totalCost)}</div></div>
-  <div class="stat-card" style="margin-top:8px"><div class="label">at ₦1,650/€ avg cost EUR</div><div class="val">${eur(totalCost)}</div></div>`;
+  if (!html) html = '<div class="empty-state"><div class="ico">🔑</div><p>No crypto holdings yet</p></div>';
+  html += investSummaryCard('Crypto', T.buckets.crypto);
   el.innerHTML = html;
 }
 
-function renderInvestNaira() {
+function renderInvestNaira(T) {
   const el = document.getElementById('invest-content');
+  T = T || investTotals();
   const rate = 1650;
   let html = '';
 
@@ -3119,14 +3235,19 @@ function renderInvestNaira() {
     html += '</div>';
   }
 
-  // ── Portfolio total ──
-  const totalNGN = state.investments.naira.reduce(function(a,f){
-    return a + (f.fundType==='equity' ? (f.currentValue||(f.units*(f.unitPrice||0))) : (f.balance||0));
-  }, 0);
-  html += '<div class="card" style="border-color:var(--accent);background:rgba(124,111,255,.06);margin-top:4px">'
+  // ── Portfolio total (NGN focus, modern summary) ──
+  const nb = T.buckets.naira;
+  const nRet = nb.ngnValue - nb.ngnInvested;
+  const nUp = nRet >= 0;
+  const nPct = nb.ngnInvested > 0 ? nRet / nb.ngnInvested * 100 : 0;
+  const fmtN = function(n){ return '₦' + (n||0).toLocaleString('en',{minimumFractionDigits:2,maximumFractionDigits:2}); };
+  html += '<div class="card inv-summary">'
     + '<div class="card-label">Total Naira Portfolio</div>'
-    + '<div style="font-size:22px;font-weight:800;font-family:var(--mono)">₦' + totalNGN.toLocaleString('en',{minimumFractionDigits:2,maximumFractionDigits:2}) + '</div>'
-    + '<div style="font-size:12px;color:var(--text2);margin-top:4px">' + eur(totalNGN/rate) + ' at ₦' + rate + '/€</div>'
+    + '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap">'
+    + '<div class="inv-sum-val">' + fmtN(nb.ngnValue) + '</div>'
+    + '<span class="gain-pill ' + (nUp?'up':'down') + '">' + (nUp?'▲ +':'▼ ') + fmtN(nRet) + ' (' + (nUp?'+':'') + nPct.toFixed(2) + '%)</span>'
+    + '</div>'
+    + '<div class="inv-sum-meta"><span>' + eur(nb.value) + ' at ₦' + rate + '/€</span><span class="dot-sep">·</span><span>' + fmtN(nb.ngnInvested) + ' invested</span></div>'
     + '</div>'
     + '<button class="btn btn-ghost btn-full" style="margin-top:8px" onclick="openAddNewAsset(\'naira\')">+ Add Naira Fund</button>';
 
