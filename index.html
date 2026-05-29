@@ -1283,9 +1283,9 @@ function fmtMon(dateStr) {
 }
 
 function calcShiftPay(empId, type, dateStr, startHr, endHr, customRate, customSleep) {
-  const emp = EMPLOYERS[empId];
+  const emp = EMPLOYERS[empId] || {};
   const rate = customRate != null ? customRate : emp.rate;
-  const sleepRate = empId === 'misty' ? emp.sleep : (customSleep != null ? customSleep : emp.sleep);
+  const sleepRate = emp.sleepType === 'hour' ? emp.sleep : (customSleep != null ? customSleep : emp.sleep);
   const sunBH1 = isSunBH(dateStr);
   const day2 = nextDay(dateStr);
   const sunBH2 = isSunBH(day2);
@@ -1301,7 +1301,7 @@ function calcShiftPay(empId, type, dateStr, startHr, endHr, customRate, customSl
     const sleepHours = 8;
     const hoursDay2 = endHr - sleepHours;
     const payDay1 = hoursDay1 * rate * mult1;
-    const sleepPay = empId === 'misty' ? sleepHours * sleepRate : (typeof sleepRate === 'number' && sleepRate > 0 ? sleepRate : 0);
+    const sleepPay = emp.sleepType === 'hour' ? sleepHours * sleepRate : (typeof sleepRate === 'number' && sleepRate > 0 ? sleepRate : 0);
     const payDay2 = hoursDay2 * rate * mult2;
     gross = payDay1 + sleepPay + payDay2 + satAllow;
     hours = hoursDay1 + hoursDay2;
@@ -1327,6 +1327,17 @@ function calcShiftPay(empId, type, dateStr, startHr, endHr, customRate, customSl
 const eur = n => '€' + (n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');
 const num = n => (n||0).toFixed(2);
 const pct = n => (n||0).toFixed(1) + '%';
+
+// Budget income is a generic map keyed by employer id (+ "other"); sum/label any keys.
+function incomeTotal(inc){
+  if (!inc) return 0;
+  if (typeof inc !== 'object') return +inc || 0;
+  return Object.keys(inc).reduce(function(a,k){ return a + (+inc[k] || 0); }, 0);
+}
+function incomeLabel(key){
+  if (key === 'other') return 'Other Income';
+  return (EMPLOYERS[key] && EMPLOYERS[key].name) || key;
+}
 
 function getMonthKey(year, month) {
   return year + '-' + String(month+1).padStart(2,'0');
@@ -1401,9 +1412,7 @@ function renderDash() {
 
   const bm = state.budget.months[ym] || {};
   const _bmi = bm.income || {};
-  const budgetIncome = typeof _bmi === 'object'
-    ? ((_bmi.pmv||0)+(_bmi.misty||0)+(_bmi.kairo||0)+(_bmi.other||0)) || monthGross
-    : (+_bmi || monthGross);
+  const budgetIncome = (typeof _bmi === 'object' ? incomeTotal(_bmi) : (+_bmi || 0)) || monthGross;
   const _bme = bm.expenses || {};
   const budgetExp = typeof _bme === 'object'
     ? Object.values(_bme).reduce(function(a,v){ return a+(+v||0); }, 0)
@@ -1590,8 +1599,7 @@ function renderBudgetOverview() {
   let ytdInc = 0, ytdExp = 0;
   for (const ym2 of MONTH_KEYS) {
     const md = state.budget.months[ym2]; if (!md) continue;
-    const i2 = md.income||{};
-    ytdInc += (i2.pmv||0)+(i2.misty||0)+(i2.kairo||0)+(i2.other||0);
+    ytdInc += incomeTotal(md.income);
     const b2=md.expenses||{}, a2=md.actuals||{};
     for (const k of Object.keys(b2)) ytdExp += (a2[k]!==undefined?a2[k]:b2[k]);
   }
@@ -1643,8 +1651,8 @@ function renderBudgetOverview() {
     estNet+=(emp.isPrimary?calcNetPrimary(g):calcNetSecondary(g)).net;
   }
   estNet+=(inc.other||0);
-  if (estNet===(inc.other||0)&&((inc.pmv||0)+(inc.misty||0)+(inc.kairo||0))>0)
-    estNet=(inc.pmv||0)+(inc.misty||0)+(inc.kairo||0)+(inc.other||0);
+  const manualEmpInc = Object.keys(inc).filter(function(k){return k!=='other';}).reduce(function(a,k){return a+(+inc[k]||0);},0);
+  if (estNet===(inc.other||0) && manualEmpInc>0) estNet = incomeTotal(inc);
 
   const totalBud=Object.values(bud).reduce(function(a,v){return a+(+v||0);},0);
   const totalAct=Object.keys(bud).reduce(function(a,k){return a+(act[k]!==undefined?act[k]:bud[k]);},0);
@@ -1663,14 +1671,14 @@ function renderBudgetOverview() {
     +'<div class="stat-card"><div class="label">'+(surplus>=0?'Remaining':'Over Budget')+'</div>'
     +'<div class="val" style="color:'+(surplus>=0?'var(--green)':'var(--red)')+'">'+( surplus>=0?'+':'')+eur(surplus)+'</div></div></div>';
 
-  // INCOME section
-  if ((inc.pmv||0)+(inc.misty||0)+(inc.kairo||0)+(inc.other||0)>0) {
+  // INCOME section (dynamic — any employer + other)
+  if (incomeTotal(inc) > 0) {
     html += '<div class="section-title">INCOME</div><div class="card" style="padding:0 16px">';
-    [{k:'pmv',l:'Peter McVerry (Net)'},{k:'misty',l:'Misty Croft (Net)'},{k:'kairo',l:'Karo (Net)'},{k:'other',l:'Other Income'}].forEach(function(x){
-      if (!(inc[x.k]||0)) return;
+    Object.keys(inc).forEach(function(k){
+      if (!(inc[k]||0)) return;
       html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">'
-        +'<span style="font-size:13px;color:var(--text2)">'+x.l+'</span>'
-        +'<span style="font-family:var(--mono);font-weight:700;font-size:13px;color:var(--green)">'+eur(inc[x.k])+'</span></div>';
+        +'<span style="font-size:13px;color:var(--text2)">'+incomeLabel(k)+'</span>'
+        +'<span style="font-family:var(--mono);font-weight:700;font-size:13px;color:var(--green)">'+eur(inc[k])+'</span></div>';
     });
     html += '</div>';
   }
@@ -1990,22 +1998,26 @@ function openEditMonthIncome(ym) {
   const m=state.budget.months[ym]||{}, inc=m.income||{};
   const ymP=ym.split('-').map(Number);
   const label=new Date(ymP[0],ymP[1]-1,1).toLocaleDateString('en-IE',{month:'long',year:'numeric'});
+  let fields = '';
+  Object.keys(EMPLOYERS).forEach(function(id){
+    fields += '<div class="field"><label>'+(EMPLOYERS[id].name||id)+' (Net €)</label>'
+      + '<input type="number" id="inc-'+id+'" step="0.01" value="'+(inc[id]||0)+'"></div>';
+  });
+  fields += '<div class="field"><label>Other Income (€)</label><input type="number" id="inc-other" step="0.01" value="'+(inc.other||0)+'"></div>';
   openModal('Income — '+label,
-    '<div class="field"><label>Peter McVerry (Net €)</label><input type="number" id="inc-pmv" step="0.01" value="'+(inc.pmv||0)+'"></div>'
-    +'<div class="field"><label>Misty Croft (Net €)</label><input type="number" id="inc-misty" step="0.01" value="'+(inc.misty||0)+'"></div>'
-    +'<div class="field"><label>Karo (Net €)</label><input type="number" id="inc-kairo" step="0.01" value="'+(inc.kairo||0)+'"></div>'
-    +'<div class="field"><label>Other Income (€)</label><input type="number" id="inc-other" step="0.01" value="'+(inc.other||0)+'"></div>'
-    +'<button class="btn btn-primary btn-full" data-ym="'+ym+'" onclick="saveMonthIncomeBtn(this)">Save</button>');
+    fields + '<button class="btn btn-primary btn-full" data-ym="'+ym+'" onclick="saveMonthIncomeBtn(this)">Save</button>');
 }
 
 function saveMonthIncome(ym) {
   if (!state.budget.months[ym]) state.budget.months[ym]={income:{},expenses:{},actuals:{}};
-  state.budget.months[ym].income={
-    pmv:parseFloat(document.getElementById('inc-pmv')?.value||0),
-    misty:parseFloat(document.getElementById('inc-misty')?.value||0),
-    kairo:parseFloat(document.getElementById('inc-kairo')?.value||0),
-    other:parseFloat(document.getElementById('inc-other')?.value||0),
-  };
+  const income = {};
+  Object.keys(EMPLOYERS).forEach(function(id){
+    const v = parseFloat(document.getElementById('inc-'+id)?.value||0);
+    if (v) income[id] = v;
+  });
+  const other = parseFloat(document.getElementById('inc-other')?.value||0);
+  if (other) income.other = other;
+  state.budget.months[ym].income = income;
   saveState(); closeModal(); renderBudgetOverview(); toast('Income updated ✓');
 }
 
@@ -2519,10 +2531,7 @@ function openAddShift() {
   const html = `
   <div class="field"><label>Employer</label>
     <select id="a-emp" onchange="onEmpChange()">
-      <option value="pmv">Peter McVerry</option>
-      <option value="misty">MistyCroft</option>
-      <option value="mcma">MCMA</option>
-      <option value="kairo">Kairo Health</option>
+      ${Object.keys(EMPLOYERS).map(id=>`<option value="${id}">${EMPLOYERS[id].name||id}</option>`).join('')}
     </select>
   </div>
   <div class="field"><label>Shift Type</label>
@@ -2556,7 +2565,7 @@ function openAddShift() {
 function onEmpChange() {
   const emp = document.getElementById('a-emp')?.value;
   const cr = document.getElementById('custom-rates');
-  if (cr) cr.style.display = (emp==='mcma'||emp==='kairo') ? 'block' : 'none';
+  if (cr) cr.style.display = (EMPLOYERS[emp] && EMPLOYERS[emp].customRates) ? 'block' : 'none';
   updateShiftPreview();
 }
 
@@ -4298,6 +4307,7 @@ function customizeCardsHtml() {
     + '<div class="card-label">Income Sources · Job Setup</div>'
     + '<div style="font-size:12px;color:var(--text2);margin-bottom:4px">Edit names and pay rates as your jobs change. Used to calculate the gross pay of <strong>new</strong> shifts you log.</div>'
     + (empRows || '<div style="font-size:12px;color:var(--text3);padding:8px 0">No income sources</div>')
+    + '<button class="btn btn-ghost btn-sm btn-full" style="margin-top:10px" onclick="openAddEmployer()">+ Add Income Source</button>'
     + '</div>';
 
   // Rates & rules
@@ -4353,9 +4363,11 @@ function openEditEmployer(id) {
     + ['weekly','biweekly','monthly'].map(function(f){ return '<option value="' + f + '"' + (freq === f ? ' selected' : '') + '>' + f.charAt(0).toUpperCase() + f.slice(1) + '</option>'; }).join('')
     + '</select></div>'
     + '<label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:14px;color:var(--text2)"><input type="checkbox" id="emp-primary"' + (e.isPrimary ? ' checked' : '') + ' style="width:auto;-webkit-appearance:auto;appearance:auto"> Primary job (tax credits / PRSI)</label>'
-    + '<button class="btn btn-primary btn-full" data-id="' + id + '" onclick="saveEmployerBtn(this)">Save Income Source</button>');
+    + '<button class="btn btn-primary btn-full" data-id="' + id + '" onclick="saveEmployerBtn(this)">Save Income Source</button>'
+    + '<button class="btn btn-danger btn-full" style="margin-top:8px" data-id="' + id + '" onclick="deleteEmployerBtn(this)">Delete Income Source</button>');
 }
 function saveEmployerBtn(btn) { saveEmployer(btn.dataset.id); }
+function deleteEmployerBtn(btn) { deleteEmployer(btn.dataset.id); }
 
 function saveEmployer(id) {
   if (!state.employers) state.employers = {};
@@ -4374,6 +4386,64 @@ function saveEmployer(id) {
   }
   applyEmployers();
   saveState(); closeModal(); renderMore(); toast('Income source updated ✓');
+}
+
+function newEmployerId(name){
+  let base = (name || 'job').toLowerCase().replace(/[^a-z0-9]+/g,'').slice(0,12) || 'job';
+  let id = base, n = 1;
+  while (state.employers[id]) { id = base + (++n); }
+  return id;
+}
+
+function openAddEmployer(){
+  openModal('Add Income Source',
+    '<div class="field"><label>Name</label><input type="text" id="nemp-name" placeholder="e.g. New Care Ltd"></div>'
+    + '<div class="row2">'
+    + '<div class="field"><label>Hourly Rate (€)</label><input type="number" id="nemp-rate" step="0.0001" value="0"></div>'
+    + '<div class="field"><label>Saturday Allow. (€)</label><input type="number" id="nemp-sat" step="0.01" value="0"></div>'
+    + '</div>'
+    + '<div class="row2">'
+    + '<div class="field"><label>Sleepover Pay</label><input type="number" id="nemp-sleep" step="0.01" value="0"></div>'
+    + '<div class="field"><label>Sleepover Type</label><select id="nemp-sleeptype"><option value="flat">Flat amount</option><option value="hour">Per hour</option></select></div>'
+    + '</div>'
+    + '<div class="field"><label>Pay Frequency</label><select id="nemp-freq"><option value="weekly">Weekly</option><option value="biweekly">Biweekly</option><option value="monthly" selected>Monthly</option></select></div>'
+    + '<label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;color:var(--text2)"><input type="checkbox" id="nemp-primary" style="width:auto;-webkit-appearance:auto;appearance:auto"> Primary job (tax credits / PRSI)</label>'
+    + '<div style="font-size:11px;color:var(--text3);margin-bottom:12px">Leave rate at 0 to enter a custom rate per shift instead.</div>'
+    + '<button class="btn btn-primary btn-full" onclick="saveNewEmployer()">Create Income Source</button>');
+}
+
+function saveNewEmployer(){
+  const name = (document.getElementById('nemp-name').value || '').trim();
+  if (!name) { toast('Enter a name'); return; }
+  const id = newEmployerId(name);
+  const e = {
+    name: name,
+    rate: parseFloat(document.getElementById('nemp-rate').value || 0),
+    satAllow: parseFloat(document.getElementById('nemp-sat').value || 0),
+    sleep: parseFloat(document.getElementById('nemp-sleep').value || 0),
+    sleepType: document.getElementById('nemp-sleeptype').value,
+    payFreq: document.getElementById('nemp-freq').value,
+    isPrimary: document.getElementById('nemp-primary').checked
+  };
+  if (!e.rate) e.customRates = true;   // no fixed rate → prompt for a per-shift rate
+  state.employers[id] = e;
+  if (e.isPrimary) {
+    Object.keys(state.employers).forEach(function(k){ if (k !== id) state.employers[k].isPrimary = false; });
+  }
+  applyEmployers();
+  saveState(); closeModal(); renderMore(); toast('Income source added ✓');
+}
+
+function deleteEmployer(id){
+  if (Object.keys(state.employers || {}).length <= 1) { toast('Keep at least one income source'); return; }
+  const hasShifts = (state.shifts || []).some(function(s){ return s.emp === id; });
+  const msg = hasShifts
+    ? 'Delete this income source? Existing shifts keep their recorded pay, but it will no longer appear for new shifts.'
+    : 'Delete this income source?';
+  if (!confirm(msg)) return;
+  delete state.employers[id];
+  applyEmployers();
+  saveState(); closeModal(); renderMore(); toast('Income source deleted');
 }
 
 function saveRates() {
