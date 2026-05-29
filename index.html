@@ -1,11 +1,15 @@
 <html lang="en"><head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#0a0a0f">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Finance Hub">
 <title>Finance Hub</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<link rel="apple-touch-icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&amp;family=DM+Mono:wght@300;400;500&amp;display=swap" rel="stylesheet">
@@ -192,6 +196,81 @@ body{display:flex;flex-direction:column;max-width:var(--max-w);margin:0 auto;pos
 .chip-scroll::-webkit-scrollbar{display:none}
 .chip{padding:6px 12px;border-radius:99px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;border:1px solid var(--border);color:var(--text3);transition:all .15s}
 .chip.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+
+/* ══════════════════════════════════════════════════════════
+   VISUAL ENHANCEMENTS
+   ══════════════════════════════════════════════════════════ */
+
+/* Ambient gradient backdrop */
+body{
+  background:
+    radial-gradient(1100px 560px at 50% -12%, rgba(124,111,255,.20), transparent 60%),
+    radial-gradient(820px 460px at 108% 102%, rgba(62,207,142,.12), transparent 55%),
+    radial-gradient(820px 460px at -8% 88%, rgba(78,168,255,.10), transparent 55%),
+    var(--bg);
+}
+
+/* Gradient brand title */
+.page-title{
+  background:linear-gradient(120deg,#ffffff 0%,#c7c0ff 70%,#a7f5d2 100%);
+  -webkit-background-clip:text;background-clip:text;
+  -webkit-text-fill-color:transparent;
+}
+
+/* Card depth */
+.card{
+  box-shadow:0 1px 0 rgba(255,255,255,.04) inset, 0 14px 30px -20px rgba(0,0,0,.85);
+  transition:transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+.card[onclick]{cursor:pointer}
+.card[onclick]:active{transform:scale(.99)}
+.stat-card{box-shadow:0 1px 0 rgba(255,255,255,.03) inset, 0 10px 22px -18px rgba(0,0,0,.8);transition:transform .18s ease}
+
+/* Buttons: gradient + soft shadow */
+.btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:0 8px 18px -10px rgba(124,111,255,.9)}
+.btn-green{background:linear-gradient(135deg,var(--green),var(--green2));box-shadow:0 8px 18px -10px rgba(62,207,142,.8)}
+
+/* Progress bars: rounder + subtle inset track */
+.prog-wrap{background:rgba(255,255,255,.06);box-shadow:inset 0 0 0 1px rgba(255,255,255,.03)}
+.prog-fill{filter:saturate(1.15)}
+
+/* Nav: glassier bar, animated active indicator + icon glow */
+#nav{background:rgba(10,10,15,.78);box-shadow:0 -10px 28px -16px rgba(0,0,0,.85)}
+.nav-btn{position:relative}
+.nav-btn.active::before{
+  content:'';position:absolute;top:1px;left:50%;transform:translateX(-50%);
+  width:26px;height:3px;border-radius:99px;background:var(--accent);
+  box-shadow:0 0 10px var(--accent);
+}
+.nav-btn.active .ico{filter:drop-shadow(0 0 7px rgba(124,111,255,.65))}
+
+/* Scan zone hover tint */
+.scan-zone{background:rgba(124,111,255,.04)}
+.scan-zone:hover,.scan-zone.drag{background:rgba(124,111,255,.09)}
+
+/* Tabs / chips active glow */
+.tab.active{box-shadow:0 2px 10px rgba(0,0,0,.5),0 0 0 1px rgba(124,111,255,.25) inset}
+.chip.active{box-shadow:0 6px 14px -8px var(--accent)}
+
+/* Page + staggered card entrance */
+.page.active{animation:fhPageIn .34s cubic-bezier(.4,0,.2,1)}
+@keyframes fhPageIn{from{opacity:0}to{opacity:1}}
+.page.active>*{animation:fhRise .42s cubic-bezier(.4,0,.2,1) backwards}
+.page.active>*:nth-child(1){animation-delay:.02s}
+.page.active>*:nth-child(2){animation-delay:.06s}
+.page.active>*:nth-child(3){animation-delay:.10s}
+.page.active>*:nth-child(4){animation-delay:.14s}
+.page.active>*:nth-child(5){animation-delay:.18s}
+.page.active>*:nth-child(n+6){animation-delay:.22s}
+@keyframes fhRise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+/* Respect reduced-motion preference */
+@media (prefers-reduced-motion: reduce){
+  .page.active,.page.active>*{animation:none}
+  .prog-fill{transition:none}
+}
+
+::selection{background:rgba(124,111,255,.4);color:#fff}
 </style>
 </head>
 <body>
@@ -3413,8 +3492,8 @@ function handleScanFile(input) {
       document.getElementById('scan-result-area').innerHTML = `<div style="color:var(--yellow);font-size:13px">Add your ${keyName} API key in Settings to use AI scanning.</div>`;
     }
   };
-  if (file.type.startsWith('image/')) reader.readAsDataURL(file);
-  else { document.getElementById('scan-result-area').innerHTML = '<div style="color:var(--yellow);padding:8px">Only image files (JPG, PNG, etc.) are supported for scanning. Please use an image instead of a PDF.</div>'; }
+  if (file.type.startsWith('image/') || file.type === 'application/pdf') reader.readAsDataURL(file);
+  else { document.getElementById('scan-result-area').innerHTML = '<div style="color:var(--yellow);padding:8px">Unsupported file. Please upload an image (JPG, PNG) or a PDF.</div>'; }
 }
 
 function handleScanDrop(e) {
@@ -3479,11 +3558,13 @@ If unclear: {"type":"unknown","notes":"description of what you see"}`;
       }
       const resp = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
         body: JSON.stringify({
           model: 'claude-haiku-4-5-20251001', max_tokens: 500,
           messages: [{ role: 'user', content: [
-            { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64 } },
+            mimeType === 'application/pdf'
+              ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }
+              : { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64 } },
             { type: 'text', text: prompt }
           ]}]
         })
@@ -3504,7 +3585,11 @@ If unclear: {"type":"unknown","notes":"description of what you see"}`;
   }
 }
 
+let lastScanResult = null;
+
 function applyScannedReceipt(data) {
+  data = data || lastScanResult;
+  if (!data) { toast('No scanned receipt to add'); return; }
   const ym = data.date ? data.date.slice(0,7) : currentMonthKey();
   if (!state.budget.months[ym]) state.budget.months[ym] = {income:{pmv:0,misty:0,kairo:0,other:0},expenses:{},actuals:{}};
   if (!state.budget.months[ym].actuals) state.budget.months[ym].actuals = {};
@@ -3518,9 +3603,27 @@ function applyScannedReceipt(data) {
   goPage('budget');
 }
 
+function applyScannedPayslip(data) {
+  data = data || lastScanResult;
+  if (!data) { toast('No scanned payslip to add'); return; }
+  const net = +data.netPay || 0;
+  if (!net) { toast('No net pay detected on payslip'); return; }
+  const date = data.date || new Date().toISOString().slice(0,10);
+  const owed = Math.round(net * (state.tithe.rate || 0.10) * 100) / 100;
+  state.tithe.entries.push({
+    id: uid(), datePaid: date, payPeriod: date,
+    emp: 'other', empName: data.employer || 'Scanned payslip',
+    net, owed, paid: 0, balance: owed
+  });
+  saveState();
+  toast('Payslip logged to Tithe ✓');
+  goPage('budget'); budgetTab = 'tithe'; renderBudget();
+}
+
 function displayScanResult(result) {
   const el = document.getElementById('scan-result-area');
   if (!el) return;
+  lastScanResult = result;
   if (!result || result.type === 'unknown') {
     el.innerHTML = '<div style="color:var(--yellow);font-size:13px;padding:10px;background:rgba(245,200,66,.08);border-radius:8px">⚠️ Could not identify document type.<br><span style="color:var(--text3)">' + (result?.notes || '') + '</span></div>';
     return;
@@ -3531,7 +3634,7 @@ function displayScanResult(result) {
     html += '<div style="display:flex;justify-content:space-between;margin-bottom:6px"><span style="color:var(--text2)">Merchant</span><span style="font-weight:700">' + (result.merchant || '–') + '</span></div>';
     html += '<div style="display:flex;justify-content:space-between;margin-bottom:6px"><span style="color:var(--text2)">Date</span><span>' + (result.date || '–') + '</span></div>';
     html += '<div style="display:flex;justify-content:space-between;margin-bottom:12px"><span style="color:var(--text2)">Total</span><span style="font-family:var(--mono);font-size:16px;font-weight:800;color:var(--green)">' + eur(result.total || 0) + '</span></div>';
-    html += '<button class="btn btn-primary btn-full" onclick="applyScannedReceipt(' + JSON.stringify(result).replace(/"/g,"'") + ')">Add to Budget</button>';
+    html += '<button class="btn btn-primary btn-full" onclick="applyScannedReceipt()">Add to Budget</button>';
   } else if (result.type === 'payslip') {
     html += '<div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">📄 Payslip Detected</div>';
     html += '<div style="display:flex;justify-content:space-between;margin-bottom:6px"><span style="color:var(--text2)">Employer</span><span style="font-weight:700">' + (result.employer || '–') + '</span></div>';
@@ -3539,7 +3642,8 @@ function displayScanResult(result) {
     html += '<div style="display:flex;justify-content:space-between;margin-bottom:6px"><span style="color:var(--text2)">Gross Pay</span><span style="font-family:var(--mono);font-weight:700">' + eur(result.grossPay || 0) + '</span></div>';
     html += '<div style="display:flex;justify-content:space-between;margin-bottom:6px"><span style="color:var(--text2)">Net Pay</span><span style="font-family:var(--mono);font-size:16px;font-weight:800;color:var(--green)">' + eur(result.netPay || 0) + '</span></div>';
     html += '<div style="display:flex;justify-content:space-between;margin-bottom:12px"><span style="color:var(--text2)">Tax Deducted</span><span style="font-family:var(--mono);color:var(--red)">' + eur(result.taxDeducted || 0) + '</span></div>';
-    html += '<div style="font-size:11px;color:var(--text3)">Review your Shifts page to verify gross pay matches.</div>';
+    html += '<button class="btn btn-primary btn-full" onclick="applyScannedPayslip()">Add to Tithe Tracker</button>';
+    html += '<div style="font-size:11px;color:var(--text3);margin-top:8px">Logs net pay &amp; the 10% tithe owed. Review Shifts to verify gross pay matches.</div>';
   } else if (result.type === 'investment_statement') {
     html += '<div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">📈 Investment Statement Detected</div>';
     html += '<div style="margin-bottom:6px"><span style="color:var(--text2)">Date: </span><span>' + (result.date || '–') + '</span></div>';
@@ -3814,9 +3918,9 @@ function saveSettings() {
   const c = document.getElementById('s-gcal')?.value;
   const m = document.getElementById('s-model')?.value;
   if (n !== undefined) state.settings.name           = n;
-  if (a)               state.settings.apiKey         = a;
-  if (g)               state.settings.geminiKey      = g;
-  if (c)               state.settings.googleClientId = c;
+  if (a !== undefined) state.settings.apiKey         = a.trim();
+  if (g !== undefined) state.settings.geminiKey      = g.trim();
+  if (c !== undefined) state.settings.googleClientId = c.trim();
   if (m)               state.settings.scannerModel   = m;
   saveState(); toast('Settings saved ✓');
 }
@@ -3977,6 +4081,13 @@ loadState();
 if (state.googleToken) googleToken = state.googleToken;
 checkGoogleCallback();
 renderDash();
+
+// ── PWA: register service worker for offline + installability ──
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('sw.js').catch(function(){ /* offline mode unavailable */ });
+  });
+}
 </script>
 
 

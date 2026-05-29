@@ -1,0 +1,19 @@
+{
+  "name": "Finance Hub",
+  "short_name": "Finance Hub",
+  "description": "Personal income, budget, loans, tithe and investment tracker.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0a0f",
+  "theme_color": "#0a0a0f",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
