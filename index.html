@@ -313,6 +313,10 @@ body{
 .loan-hero-foot{font-size:12.5px;color:var(--text2);margin-top:10px;text-align:center}
 @media (min-width: 900px){ .loan-actions{grid-template-columns:repeat(4,1fr)} }
 
+/* ── DASHBOARD: quick actions row ── */
+.dash-quick{display:flex;gap:8px;margin-bottom:12px}
+.dash-quick .btn{flex:1;justify-content:center;padding-left:6px;padding-right:6px;font-size:12px}
+
 /* ══════════════════════════════════════════════════════════
    DESKTOP / WEB LAYOUT (≥900px) — sidebar nav + wide canvas
    Mobile (<900px) keeps the original phone layout untouched.
@@ -359,13 +363,11 @@ body{
   #main > .page{ max-width:940px; margin:0 auto; }
   .page-title{ font-size:28px; }
 
-  /* Dashboard becomes a real 2-column dashboard.
-     Children order: 1=header, 2=income hero, 3=stat grid2 → span full width;
-     the remaining cards (loans / tithe / savings) flow into two columns. */
+  /* Dashboard becomes a real 2-column dashboard. Elements tagged .dash-span
+     run full width; the rest (investments / loans / tithe / savings) flow
+     into two columns. */
   #page-dash.active{ display:grid; grid-template-columns:1fr 1fr; gap:14px; align-items:start; }
-  #page-dash > *:nth-child(1),
-  #page-dash > *:nth-child(2),
-  #page-dash > *:nth-child(3){ grid-column:1 / -1; }
+  #page-dash > .dash-span{ grid-column:1 / -1; }
 
   /* Modal: bottom sheet → centered dialog */
   #modal-overlay{ align-items:center; }
@@ -1396,28 +1398,71 @@ function renderDash() {
     : (+_bme || 0);
   const remaining = budgetIncome - budgetExp;
 
-  const totalLoan = (state.loans.l682.currentBalance || 0) + (state.loans.l336.currentBalance || 0);
-  const totalMonthly = (state.loans.l682.monthly || 0) + (state.loans.l336.monthly || 0);
+  const totalLoan = Object.keys(state.loans).reduce(function(a,k){ return a + (state.loans[k].currentBalance || 0); }, 0);
+  const totalMonthly = Object.keys(state.loans).reduce(function(a,k){ return a + (state.loans[k].monthly || 0); }, 0);
 
   const titheOwed = state.tithe.entries.reduce((a,t) => a + t.balance, 0);
 
+  // ── Net worth & portfolio ──
+  const inv = investTotals();
+  const savingsTotal = (state.savings.goals || []).reduce(function(a,g){ return a + (g.saved || 0); }, 0);
+  const assets = inv.value + savingsTotal;
+  const netWorth = assets - totalLoan;
+
+  // ── Loans summary with payoff projection ──
+  let lBase = 0, lPaid = 0, latestPayoff = null, anyNever = false;
+  Object.keys(state.loans).forEach(function(k){
+    const l = state.loans[k];
+    const base = l.peakBalance || l.original || l.currentBalance || 0;
+    lBase += base; lPaid += Math.max(0, base - (l.currentBalance || 0));
+    const p = loanPayoff(l);
+    if (p.neverPaysOff) anyNever = true;
+    else if (p.payoffDate && (!latestPayoff || p.payoffDate > latestPayoff)) latestPayoff = p.payoffDate;
+  });
+  const lpct = lBase > 0 ? Math.min(100, lPaid / lBase * 100) : 0;
+  const loanFoot = totalLoan <= 0 ? '🎉 debt-free'
+    : anyNever ? '⚠️ adjust payment'
+    : latestPayoff ? 'Debt-free ' + fmtMonthYear(latestPayoff) : '';
+
   const now = new Date();
   const monthName = now.toLocaleDateString('en-IE',{month:'long',year:'numeric'});
+  const hr = now.getHours();
+  const greet = hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening';
+  const firstName = (state.settings && state.settings.name) ? (', ' + state.settings.name.trim().split(/\s+/)[0]) : '';
 
   el.innerHTML = `
-  <div class="page-header">
+  <div class="page-header dash-span">
     <div>
-      <div class="page-title">Finance Hub</div>
+      <div class="page-title">${greet}${firstName}</div>
       <div class="page-sub">${monthName.toUpperCase()}</div>
     </div>
     <div style="font-size:24px">⚡</div>
   </div>
 
+  <!-- NET WORTH HERO -->
+  <div class="card dash-span" onclick="goPage('invest')" style="cursor:pointer;background:linear-gradient(135deg,rgba(62,207,142,.14),rgba(124,111,255,.07));border-color:rgba(62,207,142,.28)">
+    <div class="card-label">Net Worth</div>
+    <div class="inv-hero-val" style="color:${netWorth>=0?'var(--green)':'var(--red)'}">${eur(netWorth)}</div>
+    <div class="inv-hero-row">
+      <span class="gain-pill up">${eur(assets)} assets</span>
+      <span class="gain-pill down">${eur(totalLoan)} debt</span>
+    </div>
+    <div class="alloc-bar"><div class="alloc-seg" style="flex:${Math.max(assets,0.0001)};background:var(--green)"></div><div class="alloc-seg" style="flex:${Math.max(totalLoan,0.0001)};background:var(--red)"></div></div>
+    <div style="font-size:11px;color:var(--text3);margin-top:8px">Investments ${eur(inv.value)} · Savings ${eur(savingsTotal)}</div>
+  </div>
+
+  <!-- QUICK ACTIONS -->
+  <div class="dash-quick dash-span">
+    <button class="btn btn-ghost btn-sm" onclick="goPage('shifts');openAddShift()">🕐 Log Shift</button>
+    <button class="btn btn-ghost btn-sm" onclick="goPage('budget');openAddExpense()">🧾 Add Expense</button>
+    <button class="btn btn-ghost btn-sm" onclick="goPage('more');moreTab='scanner';renderMore()">📷 Scan</button>
+  </div>
+
   <!-- INCOME CARD -->
-  <div class="card" style="background:linear-gradient(135deg,rgba(124,111,255,.15),rgba(62,207,142,.08));border-color:rgba(124,111,255,.3)">
-    <div class="card-label">Monthly Net Income</div>
+  <div class="card dash-span" onclick="goPage('shifts')" style="cursor:pointer;background:linear-gradient(135deg,rgba(124,111,255,.15),rgba(62,207,142,.08));border-color:rgba(124,111,255,.3)">
+    <div class="card-label">Net Income · This Month</div>
     <div class="card-value" style="color:var(--green);font-size:32px">${eur(totalNet)}</div>
-    <div class="card-sub">${eur(monthGross)} gross · ${shifts.length} shifts this month</div>
+    <div class="card-sub">${eur(monthGross)} gross · ${shifts.length} shifts</div>
     <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
       ${pmvGross>0?`<span class="tag tag-purple">PMV ${eur(pmvNet)}</span>`:''}
       ${mistyGross>0?`<span class="tag tag-blue">Misty ${eur(mistyNet)}</span>`:''}
@@ -1427,7 +1472,7 @@ function renderDash() {
   </div>
 
   <!-- BUDGET SNAPSHOT -->
-  <div class="grid2" style="margin-bottom:12px">
+  <div class="grid2 dash-span" style="margin-bottom:12px">
     <div class="stat-card">
       <div class="label">Spent</div>
       <div class="val" style="color:${remaining<0?'var(--red)':'var(--text)'}">${eur(budgetExp)}</div>
@@ -1440,23 +1485,19 @@ function renderDash() {
     </div>
   </div>
 
-  <!-- LOAN SNAPSHOT -->
+  <!-- INVESTMENTS (compact) -->
+  <div class="card" onclick="goPage('invest')" style="cursor:pointer">
+    <div class="card-label">Investments</div>
+    <div style="font-size:22px;font-weight:800;font-family:var(--mono)">${eur(inv.value)}</div>
+    <div style="margin-top:8px"><span class="gain-pill ${inv.ret>=0?'up':'down'}">${inv.ret>=0?'▲ +':'▼ '}${eur(inv.ret)} · ${inv.retPct>=0?'+':''}${inv.retPct.toFixed(1)}%</span></div>
+  </div>
+
+  <!-- LOANS (compact) -->
   <div class="card" onclick="goPage('loans')" style="cursor:pointer">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-      <div class="card-label">Loans</div>
-      <span class="tag tag-red">${eur(totalLoan)} owed</span>
-    </div>
-    <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px">
-      <span style="color:var(--text2)">AIB 682</span>
-      <span style="font-family:var(--mono)">${eur(state.loans.l682.currentBalance)}</span>
-    </div>
-    <div class="prog-wrap"><div class="prog-fill" style="width:${Math.min(100,(1-state.loans.l682.currentBalance/state.loans.l682.original)*100)}%;background:var(--green)"></div></div>
-    <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:8px;margin-bottom:6px">
-      <span style="color:var(--text2)">AIB 336</span>
-      <span style="font-family:var(--mono)">${eur(state.loans.l336.currentBalance)}</span>
-    </div>
-    <div class="prog-wrap"><div class="prog-fill" style="width:${Math.min(100,(1-state.loans.l336.currentBalance/state.loans.l336.peakBalance)*100)}%;background:var(--blue)"></div></div>
-    <div style="margin-top:8px;font-size:12px;color:var(--text3)">Combined monthly: ${eur(totalMonthly)}</div>
+    <div class="card-label">Loans</div>
+    <div style="font-size:22px;font-weight:800;font-family:var(--mono);color:var(--red)">${eur(totalLoan)}</div>
+    <div class="prog-wrap" style="margin-top:8px"><div class="prog-fill" style="width:${lpct}%;background:var(--green)"></div></div>
+    <div style="font-size:11px;color:var(--text3);margin-top:6px">${eur(totalMonthly)}/mo · ${loanFoot}</div>
   </div>
 
   <!-- TITHE ALERT -->
