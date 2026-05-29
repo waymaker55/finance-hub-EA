@@ -537,6 +537,8 @@ const EMPLOYERS = {
   mcma:  { name:'MCMA',          rate:25.00,   sleep:0,       sleepType:'flat', satAllow:0,  payFreq:'weekly',    isPrimary:false, customRates:true },
   kairo: { name:'Kairo Health',  rate:0,       sleep:0,       sleepType:'flat', satAllow:0,  payFreq:'weekly',    isPrimary:false, customRates:true }
 };
+// Pristine copy of the shipped defaults — used to seed editable config and to reset.
+const EMPLOYERS_DEFAULTS = JSON.parse(JSON.stringify(EMPLOYERS));
 
 const SEED_SHIFTS = [
   // 2026-01
@@ -1105,7 +1107,30 @@ function loadState() {
   } else {
     initState();
   }
+  ensureConfig();
 }
+
+// Non-destructive migration: fill in editable config without wiping saved data.
+function ensureConfig() {
+  if (!state.settings) state.settings = {};
+  if (state.settings.ngnRate == null) state.settings.ngnRate = 1650;
+  if (state.settings.usdRate == null) state.settings.usdRate = 1.08;
+  if (!state.tithe) state.tithe = { rate: 0.10, entries: [] };
+  if (state.tithe.rate == null) state.tithe.rate = 0.10;
+  if (!state.employers) state.employers = JSON.parse(JSON.stringify(EMPLOYERS_DEFAULTS));
+  applyEmployers();
+}
+
+// Sync the user's editable employer config into the live EMPLOYERS object used by pay calcs.
+function applyEmployers() {
+  if (!state.employers) return;
+  Object.keys(EMPLOYERS).forEach(function(k){ delete EMPLOYERS[k]; });
+  Object.keys(state.employers).forEach(function(k){ EMPLOYERS[k] = Object.assign({}, state.employers[k]); });
+}
+
+// Configurable rate accessors (fall back to shipped defaults).
+function ngnRate()     { return (state.settings && +state.settings.ngnRate) || 1650; }
+function usdFallback() { return (state.settings && +state.settings.usdRate) || 1.08; }
 
 function initState() {
   state = {
@@ -1120,8 +1145,12 @@ function initState() {
     shortTermGoals: JSON.parse(JSON.stringify(SEED_SHORT_TERM_GOALS)),
     settings: { name:'', apiKey:'', geminiKey:'', googleClientId:'', scannerModel:'claude', currency:'EUR' },
     invPrices: {},
+    employers: JSON.parse(JSON.stringify(EMPLOYERS_DEFAULTS)),
     currentYear: 2026
   };
+  state.settings.ngnRate = 1650;
+  state.settings.usdRate = 1.08;
+  applyEmployers();
   saveState();
 }
 
@@ -2738,7 +2767,7 @@ const INV_BUCKETS = [
 // Aggregate every holding into a common EUR view (falls back to cost basis when no live price is set)
 function investTotals() {
   const px = state.invPrices || {};
-  const NGN = 1650;
+  const NGN = ngnRate();
   const inv = state.investments || {};
 
   function usdBucket(arr, withDivs) {
@@ -2764,7 +2793,7 @@ function investTotals() {
     cCount++;
     const cost = c.costEUR || 0; cInv += cost;
     const pl = px[c.ticker];
-    const cEUR = (pl && pl.price) ? pl.price / (pl.rate || 1.08) : null;
+    const cEUR = (pl && pl.price) ? pl.price / (pl.rate || usdFallback()) : null;
     if (cEUR != null) { cVal += c.units * cEUR; cPriced++; } else { cVal += cost; }
   }
   const crypto = { invested: cInv, value: cVal, fees: 0, divs: 0, priced: cPriced, count: cCount };
@@ -3146,7 +3175,7 @@ function renderInvestCrypto(T) {
 function renderInvestNaira(T) {
   const el = document.getElementById('invest-content');
   T = T || investTotals();
-  const rate = 1650;
+  const rate = ngnRate();
   let html = '';
 
   for (const f of state.investments.naira) {
@@ -3427,7 +3456,7 @@ function updatePrice(assetId, assetType) {
   if (assetType==='etf') ticker = state.investments.etfs.find(e=>e.id===assetId)?.ticker;
   else if (assetType==='stock') ticker = state.investments.stocks.find(s=>s.id===assetId)?.ticker;
   else if (assetType==='crypto') ticker = state.investments.crypto.find(c=>c.id===assetId)?.ticker;
-  if (ticker) { state.invPrices[ticker] = {price, rate:1.08, updated:new Date().toISOString()}; }
+  if (ticker) { state.invPrices[ticker] = {price, rate:usdFallback(), updated:new Date().toISOString()}; }
   saveState(); renderInvest(); toast('Price updated ✓');
 }
 
@@ -4016,6 +4045,9 @@ function renderSettings() {
     + '<button class="btn btn-primary btn-sm" onclick="saveSettings()">Save</button>'
     + '</div>'
 
+    // ── Customize hub (income sources, rates, section editors) ──
+    + customizeCardsHtml()
+
     // ── AI Scanner card ──
     + '<div class="card">'
     + '<div class="card-label">AI Scanner</div>'
@@ -4087,6 +4119,117 @@ function renderSettings() {
   const a = document.getElementById('s-apikey'); if(a) a.value = state.settings.apiKey||'';
   const g = document.getElementById('s-geminikey'); if(g) g.value = state.settings.geminiKey||'';
   const c = document.getElementById('s-gcal'); if(c) c.value = state.settings.googleClientId||'';
+}
+
+// ── CUSTOMIZE HUB ──────────────────────────────────────────
+function customizeCardsHtml() {
+  const tithePct = ((state.tithe && state.tithe.rate != null) ? state.tithe.rate : 0.10) * 100;
+  const ngn = ngnRate();
+  const usd = usdFallback();
+  const emps = state.employers || {};
+
+  let empRows = '';
+  Object.keys(emps).forEach(function(id){
+    const e = emps[id] || {};
+    empRows += '<div class="list-item">'
+      + '<div class="list-item-l"><div class="list-item-label">' + (e.name || id)
+      + (e.isPrimary ? ' <span class="tag tag-purple" style="font-size:9px">primary</span>' : '') + '</div>'
+      + '<div class="list-item-sub">€' + (e.rate || 0) + '/hr · ' + (e.payFreq || 'monthly') + '</div></div>'
+      + '<div class="list-item-r"><button class="btn btn-ghost btn-sm" onclick="openEditEmployer(\'' + id + '\')">Edit</button></div>'
+      + '</div>';
+  });
+
+  let html = '';
+
+  // Income sources / job setup
+  html += '<div class="card">'
+    + '<div class="card-label">Income Sources · Job Setup</div>'
+    + '<div style="font-size:12px;color:var(--text2);margin-bottom:4px">Edit names and pay rates as your jobs change. Used to calculate the gross pay of <strong>new</strong> shifts you log.</div>'
+    + (empRows || '<div style="font-size:12px;color:var(--text3);padding:8px 0">No income sources</div>')
+    + '</div>';
+
+  // Rates & rules
+  html += '<div class="card">'
+    + '<div class="card-label">Rates &amp; Rules</div>'
+    + '<div class="row2">'
+    + '<div class="field"><label>Tithe Rate (%)</label><input type="number" id="s-tithe" step="0.5" value="' + tithePct + '"></div>'
+    + '<div class="field"><label>₦ per € (Naira rate)</label><input type="number" id="s-ngn" step="1" value="' + ngn + '"></div>'
+    + '</div>'
+    + '<div class="field"><label>EUR/USD Fallback Rate</label><input type="number" id="s-usd" step="0.001" value="' + usd + '"></div>'
+    + '<button class="btn btn-primary btn-sm" onclick="saveRates()">Save Rates</button>'
+    + '</div>';
+
+  // Jump to existing section editors
+  html += '<div class="card">'
+    + '<div class="card-label">Edit App Sections</div>'
+    + '<div style="font-size:12px;color:var(--text2);margin-bottom:10px">Jump straight to add, edit or remove items in any section.</div>'
+    + '<div class="row2" style="gap:8px">'
+    + '<button class="btn btn-ghost btn-sm btn-full" onclick="goCustomize(\'budget\',\'overview\')">📊 Budget</button>'
+    + '<button class="btn btn-ghost btn-sm btn-full" onclick="goCustomize(\'budget\',\'savings\')">🎯 Savings goals</button>'
+    + '</div>'
+    + '<div class="row2" style="gap:8px;margin-top:8px">'
+    + '<button class="btn btn-ghost btn-sm btn-full" onclick="goCustomize(\'budget\',\'tithe\')">🙏 Tithe</button>'
+    + '<button class="btn btn-ghost btn-sm btn-full" onclick="goCustomize(\'loans\')">🏦 Loans</button>'
+    + '</div>'
+    + '<button class="btn btn-ghost btn-sm btn-full" style="margin-top:8px" onclick="goCustomize(\'invest\')">📈 Investments</button>'
+    + '</div>';
+
+  return html;
+}
+
+function goCustomize(page, tab) {
+  if (page === 'budget' && tab) budgetTab = tab;
+  goPage(page);
+}
+
+function openEditEmployer(id) {
+  const e = (state.employers && state.employers[id]) || {};
+  const freq = e.payFreq || 'monthly';
+  openModal('Edit Income Source',
+    '<div class="field"><label>Name</label><input type="text" id="emp-name" value="' + String(e.name || '').replace(/"/g,'&quot;') + '"></div>'
+    + '<div class="row2">'
+    + '<div class="field"><label>Hourly Rate (€)</label><input type="number" id="emp-rate" step="0.0001" value="' + (e.rate || 0) + '"></div>'
+    + '<div class="field"><label>Saturday Allow. (€)</label><input type="number" id="emp-sat" step="0.01" value="' + (e.satAllow || 0) + '"></div>'
+    + '</div>'
+    + '<div class="row2">'
+    + '<div class="field"><label>Sleepover Pay</label><input type="number" id="emp-sleep" step="0.01" value="' + (e.sleep || 0) + '"></div>'
+    + '<div class="field"><label>Sleepover Type</label><select id="emp-sleeptype">'
+    + '<option value="flat"' + (e.sleepType === 'flat' ? ' selected' : '') + '>Flat amount</option>'
+    + '<option value="hour"' + (e.sleepType === 'hour' ? ' selected' : '') + '>Per hour</option></select></div>'
+    + '</div>'
+    + '<div class="field"><label>Pay Frequency</label><select id="emp-freq">'
+    + ['weekly','biweekly','monthly'].map(function(f){ return '<option value="' + f + '"' + (freq === f ? ' selected' : '') + '>' + f.charAt(0).toUpperCase() + f.slice(1) + '</option>'; }).join('')
+    + '</select></div>'
+    + '<label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:14px;color:var(--text2)"><input type="checkbox" id="emp-primary"' + (e.isPrimary ? ' checked' : '') + ' style="width:auto;-webkit-appearance:auto;appearance:auto"> Primary job (tax credits / PRSI)</label>'
+    + '<button class="btn btn-primary btn-full" data-id="' + id + '" onclick="saveEmployerBtn(this)">Save Income Source</button>');
+}
+function saveEmployerBtn(btn) { saveEmployer(btn.dataset.id); }
+
+function saveEmployer(id) {
+  if (!state.employers) state.employers = {};
+  const e = Object.assign({}, state.employers[id] || {});
+  e.name      = document.getElementById('emp-name').value.trim() || id;
+  e.rate      = parseFloat(document.getElementById('emp-rate').value || 0);
+  e.satAllow  = parseFloat(document.getElementById('emp-sat').value || 0);
+  e.sleep     = parseFloat(document.getElementById('emp-sleep').value || 0);
+  e.sleepType = document.getElementById('emp-sleeptype').value;
+  e.payFreq   = document.getElementById('emp-freq').value;
+  e.isPrimary = document.getElementById('emp-primary').checked;
+  state.employers[id] = e;
+  applyEmployers();
+  saveState(); closeModal(); renderMore(); toast('Income source updated ✓');
+}
+
+function saveRates() {
+  const t   = parseFloat(document.getElementById('s-tithe')?.value);
+  const ngn = parseFloat(document.getElementById('s-ngn')?.value);
+  const usd = parseFloat(document.getElementById('s-usd')?.value);
+  if (!state.settings) state.settings = {};
+  if (!state.tithe) state.tithe = { entries: [] };
+  if (!isNaN(t) && t >= 0)   state.tithe.rate = t / 100;
+  if (!isNaN(ngn) && ngn > 0) state.settings.ngnRate = ngn;
+  if (!isNaN(usd) && usd > 0) state.settings.usdRate = usd;
+  saveState(); renderMore(); toast('Rates saved ✓');
 }
 
 function toggleScannerModelFields() {
