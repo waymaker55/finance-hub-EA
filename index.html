@@ -292,6 +292,27 @@ body{
 .inv-sum-meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px;font-size:11px;color:var(--text2)}
 .dot-sep{color:var(--text3)}
 
+/* ── LOANS: payoff projection, activity log ── */
+.loan-payoff{display:flex;gap:8px;margin-top:12px;padding:11px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:10px}
+.loan-payoff>div{flex:1;min-width:0}
+.loan-payoff.done{justify-content:center;color:var(--green);font-weight:700}
+.loan-payoff.warn{display:block;color:var(--red);font-size:12px;font-weight:600}
+.lp-label{font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3)}
+.lp-val{font-size:14px;font-weight:800;font-family:var(--mono);margin-top:3px}
+.loan-act{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)}
+.loan-act:last-child{border-bottom:none}
+.loan-act-l{display:flex;align-items:center;gap:11px;min-width:0}
+.loan-act-ic{font-size:16px;flex-shrink:0}
+.loan-act-lbl{font-size:13px;font-weight:600}
+.loan-act-date{font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:1px}
+.loan-act-amt{font-family:var(--mono);font-weight:700;font-size:14px;flex-shrink:0;margin-left:10px}
+.loan-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
+.loan-details{margin-top:10px}
+.loan-details summary{font-size:12px;color:var(--accent);cursor:pointer;list-style:none;font-weight:600}
+.loan-details summary::-webkit-details-marker{display:none}
+.loan-hero-foot{font-size:12.5px;color:var(--text2);margin-top:10px;text-align:center}
+@media (min-width: 900px){ .loan-actions{grid-template-columns:repeat(4,1fr)} }
+
 /* ══════════════════════════════════════════════════════════
    DESKTOP / WEB LAYOUT (≥900px) — sidebar nav + wide canvas
    Mobile (<900px) keeps the original phone layout untouched.
@@ -2581,97 +2602,182 @@ function saveNewShift() {
 // LOANS PAGE
 // ══════════════════════════════════════════════════════════
 
-function renderLoans() {
-  const el = document.getElementById('page-loans');
-  const l682 = state.loans.l682;
-  const l336 = state.loans.l336;
+let loanActExpanded = {};
+function toggleLoanAct(id){ loanActExpanded[id] = !loanActExpanded[id]; renderLoans(); }
 
-  const prog682 = Math.min(100, (1 - l682.currentBalance/l682.original)*100);
-  const prog336 = Math.min(100, (1 - l336.currentBalance/l336.peakBalance)*100);
+function fmtMonthYear(d){ return d.toLocaleDateString('en-IE', { month:'short', year:'numeric' }); }
 
-  el.innerHTML = `
-  <div class="page-header">
-    <div><div class="page-title">Loans</div><div class="page-sub">AIB PERSONAL</div></div>
-  </div>
-
-  <!-- LOAN 682 -->
-  <div class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <div style="font-size:15px;font-weight:800">${l682.name}</div>
-      <span class="tag tag-red">${eur(l682.currentBalance)}</span>
-    </div>
-    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px">
-      <span style="color:var(--text3)">Paid: ${eur(l682.original - l682.currentBalance)} of ${eur(l682.original)}</span>
-      <span style="font-weight:700">${prog682.toFixed(1)}%</span>
-    </div>
-    <div class="prog-wrap" style="height:10px"><div class="prog-fill" style="width:${prog682}%;background:var(--green)"></div></div>
-    <div class="grid2" style="margin-top:12px;margin-bottom:12px">
-      <div class="stat-card"><div class="label">Monthly</div><div class="val">${eur(l682.monthly)}</div></div>
-      <div class="stat-card"><div class="label">Interest Saved</div><div class="val" style="color:var(--green)">${eur(l682.interestSaved)}</div></div>
-    </div>
-    <div class="section-title" style="margin-top:4px">Extra Payments (${eur(l682.extraPayments.reduce((a,p)=>a+p.amount,0))} total)</div>
-    ${l682.extraPayments.map(p => `
-    <div class="inv-buy-row">${fmtDate(p.date)}<span style="color:var(--green)">${eur(p.amount)}</span></div>`).join('')}
-    ${(state.loans.l682.monthlyPayments||[]).length ? `<div class="section-title" style="margin-top:4px;color:var(--accent2)">Monthly Payments (${eur((state.loans.l682.monthlyPayments||[]).reduce((a,p)=>a+p.amount,0))} total)</div>${(state.loans.l682.monthlyPayments||[]).slice(-5).reverse().map(p=>`<div class="loan-history-row"><span>${p.date}${ p.note ? ' — '+p.note : ''}</span><span style="color:var(--green)">-${eur(p.amount)}</span></div>`).join('')}` : ''}
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:12px">
-      <button class="btn btn-primary btn-sm" onclick="openAddMonthlyPayment('l682')">+ Monthly</button>
-      <button class="btn btn-secondary btn-sm" onclick="openAddExtraPayment('l682')">+ Extra</button>
-      <button class="btn btn-ghost btn-sm" onclick="openAddInterestCharge('l682')">+ Interest</button>
-      <button class="btn btn-ghost btn-sm" onclick="openUpdateBalance('l682')">Balance</button>
-    </div>
-  </div>
-
-  <!-- LOAN 336 -->
-  <div class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <div style="font-size:15px;font-weight:800">${l336.name}</div>
-      <span class="tag tag-red">${eur(l336.currentBalance)}</span>
-    </div>
-    <!-- History box -->
-    <div class="loan-history">
-      <div class="loan-history-row"><span>📌 Phase 1: Feb 2023</span><span>${eur(l336.phase1.original)} original</span></div>
-      <div class="loan-history-row"><span>  Paid down to</span><span>${eur(l336.phase1.paidTo)} by Feb 2024</span></div>
-      <div class="loan-history-row"><span>📌 Phase 2: Feb 2024 top-up</span><span>+${eur(l336.phase2.topup)}</span></div>
-      <div class="loan-history-row" style="color:var(--yellow)"><span>⚑ Peak balance</span><span>${eur(l336.peakBalance)}</span></div>
-    </div>
-    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px">
-      <span style="color:var(--text3)">Paid from peak: ${eur(l336.peakBalance - l336.currentBalance)}</span>
-      <span style="font-weight:700">${prog336.toFixed(1)}%</span>
-    </div>
-    <div class="prog-wrap" style="height:10px"><div class="prog-fill" style="width:${prog336}%;background:var(--blue)"></div></div>
-    <div class="grid2" style="margin-top:12px;margin-bottom:12px">
-      <div class="stat-card"><div class="label">Monthly</div><div class="val">${eur(l336.monthly)}</div></div>
-      <div class="stat-card"><div class="label">Interest Saved</div><div class="val" style="color:var(--green)">${eur(l336.interestSaved)}</div></div>
-    </div>
-    <div class="section-title" style="margin-top:4px">Extra Payments (${eur(l336.extraPayments.reduce((a,p)=>a+p.amount,0))} total)</div>
-    <div id="ep336-list">
-      ${l336.extraPayments.slice(-5).map(p => `
-      <div class="inv-buy-row">${fmtDate(p.date)}<span style="color:var(--green)">${eur(p.amount)}</span></div>`).join('')}
-    </div>
-    ${l336.extraPayments.length>5?`<div style="font-size:11px;color:var(--text3);text-align:center;padding:4px">+ ${l336.extraPayments.length-5} more · <span style="color:var(--accent);cursor:pointer" onclick="showAllEP336()">Show all</span></div>`:''}
-    ${(state.loans.l336.monthlyPayments||[]).length ? `<div class="section-title" style="margin-top:4px;color:var(--accent2)">Monthly Payments (${eur((state.loans.l336.monthlyPayments||[]).reduce((a,p)=>a+p.amount,0))} total)</div>${(state.loans.l336.monthlyPayments||[]).slice(-5).reverse().map(p=>`<div class="loan-history-row"><span>${p.date}${ p.note ? ' — '+p.note : ''}</span><span style="color:var(--green)">-${eur(p.amount)}</span></div>`).join('')}` : ''}
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:12px">
-      <button class="btn btn-primary btn-sm" onclick="openAddMonthlyPayment('l336')">+ Monthly</button>
-      <button class="btn btn-secondary btn-sm" onclick="openAddExtraPayment('l336')">+ Extra</button>
-      <button class="btn btn-ghost btn-sm" onclick="openAddInterestCharge('l336')">+ Interest</button>
-      <button class="btn btn-ghost btn-sm" onclick="openUpdateBalance('l336')">Balance</button>
-    </div>
-  </div>
-
-  <!-- COMBINED -->
-  <div class="card" style="border-color:var(--accent)">
-    <div class="card-label">Combined Outstanding</div>
-    <div class="card-value" style="color:var(--red)">${eur(l682.currentBalance+l336.currentBalance)}</div>
-    <div class="card-sub">Monthly commitment: ${eur(l682.monthly+l336.monthly)} · Interest saved: ${eur(l682.interestSaved+l336.interestSaved)}</div>
-  </div>
-  `;
+// Standard amortisation: months to clear, projected remaining interest, debt-free date.
+function loanPayoff(loan){
+  const B = loan.currentBalance || 0;
+  const P = loan.monthly || 0;
+  const apr = loan.rate || 0;
+  if (B <= 0) return { done:true, months:0, totalInterest:0, payoffDate:null };
+  if (P <= 0) return { neverPaysOff:true };
+  const r = apr / 100 / 12;
+  let months, totalInterest;
+  if (r <= 0){
+    months = Math.ceil(B / P);
+    totalInterest = 0;
+  } else {
+    if (P <= B * r) return { neverPaysOff:true };          // payment doesn't cover monthly interest
+    const n = -Math.log(1 - (B * r) / P) / Math.log(1 + r);
+    months = Math.ceil(n);
+    totalInterest = Math.max(0, P * n - B);
+  }
+  const payoffDate = new Date();
+  payoffDate.setMonth(payoffDate.getMonth() + months);
+  return { done:false, months, totalInterest, payoffDate };
 }
 
-function showAllEP336() {
-  const el = document.getElementById('ep336-list');
-  if (!el) return;
-  el.innerHTML = state.loans.l336.extraPayments.map(p => `
-  <div class="inv-buy-row">${fmtDate(p.date)}<span style="color:var(--green)">${eur(p.amount)}</span></div>`).join('');
+// Merge the three payment/charge streams into one date-sorted activity feed.
+function loanActivity(loan){
+  const items = [];
+  (loan.monthlyPayments || []).forEach(function(p){ items.push({ kind:'monthly',  date:p.date, amount:p.amount, note:p.note }); });
+  (loan.extraPayments   || []).forEach(function(p){ items.push({ kind:'extra',    date:p.date, amount:p.amount, note:p.note }); });
+  (loan.interestCharges || []).forEach(function(p){ items.push({ kind:'interest', date:p.date, amount:p.amount, note:p.note }); });
+  items.sort(function(a,b){ return String(b.date||'').localeCompare(String(a.date||'')); });
+  return items;
+}
+
+function renderLoanCard(loanId, color){
+  const l = state.loans[loanId];
+  if (!l) return '';
+  const base = l.peakBalance || l.original || l.currentBalance || 0;
+  const paid = Math.max(0, base - (l.currentBalance || 0));
+  const pct  = base > 0 ? Math.min(100, paid / base * 100) : 0;
+  const payoff = loanPayoff(l);
+  const acts = loanActivity(l);
+  const expanded = !!loanActExpanded[loanId];
+  const shown = expanded ? acts : acts.slice(0, 5);
+  const extraTotal = (l.extraPayments || []).reduce(function(a,p){ return a + p.amount; }, 0);
+
+  let h = '<div class="card">';
+
+  // Header: name + APR/monthly, balance
+  h += '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:10px">'
+    + '<div style="min-width:0"><div style="font-size:16px;font-weight:800">' + l.name + '</div>'
+    + '<div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:2px">' + (l.rate || 0) + '% APR · ' + eur(l.monthly) + '/mo</div></div>'
+    + '<div style="text-align:right;flex-shrink:0"><div style="font-size:21px;font-weight:800;font-family:var(--mono);color:var(--red)">' + eur(l.currentBalance) + '</div>'
+    + '<div style="font-size:10px;color:var(--text3)">remaining</div></div>'
+    + '</div>';
+
+  // Progress
+  h += '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px">'
+    + '<span style="color:var(--text2)">' + eur(paid) + ' paid of ' + eur(base) + '</span>'
+    + '<span style="font-weight:700;color:' + color + '">' + pct.toFixed(1) + '%</span></div>';
+  h += '<div class="prog-wrap" style="height:10px"><div class="prog-fill" style="width:' + pct + '%;background:' + color + '"></div></div>';
+
+  // Payoff projection
+  if (payoff.done){
+    h += '<div class="loan-payoff done">🎉 Paid off — nice work!</div>';
+  } else if (payoff.neverPaysOff){
+    h += '<div class="loan-payoff warn">⚠️ At this monthly amount the payment doesn\'t cover the interest, so the balance won\'t reduce. Increase the monthly payment.</div>';
+  } else {
+    h += '<div class="loan-payoff">'
+      + '<div><div class="lp-label">Debt-free</div><div class="lp-val">' + fmtMonthYear(payoff.payoffDate) + '</div></div>'
+      + '<div><div class="lp-label">Time left</div><div class="lp-val">' + payoff.months + ' mo</div></div>'
+      + '<div><div class="lp-label">Interest left</div><div class="lp-val" style="color:var(--yellow)">' + eur(payoff.totalInterest) + '</div></div>'
+      + '</div>';
+  }
+
+  // Quick stats
+  h += '<div class="grid2" style="margin-top:12px">'
+    + '<div class="stat-card"><div class="label">Interest Saved</div><div class="val" style="color:var(--green)">' + eur(l.interestSaved || 0) + '</div></div>'
+    + '<div class="stat-card"><div class="label">Extra Paid</div><div class="val">' + eur(extraTotal) + '</div></div>'
+    + '</div>';
+
+  // Optional phase history (loan 336)
+  if (l.phase1 && l.phase2){
+    h += '<details class="loan-details"><summary>📖 Loan history</summary>'
+      + '<div class="loan-history" style="margin-top:8px">'
+      + '<div class="loan-history-row"><span>📌 Phase 1 · Feb 2023</span><span>' + eur(l.phase1.original) + ' original</span></div>'
+      + '<div class="loan-history-row"><span>Paid down to</span><span>' + eur(l.phase1.paidTo) + ' by Feb 2024</span></div>'
+      + '<div class="loan-history-row"><span>📌 Phase 2 · top-up</span><span>+' + eur(l.phase2.topup) + '</span></div>'
+      + '<div class="loan-history-row" style="color:var(--yellow)"><span>⚑ Peak balance</span><span>' + eur(l.peakBalance) + '</span></div>'
+      + '</div></details>';
+  }
+
+  // Unified activity feed
+  h += '<div class="section-title" style="margin-top:12px">Activity</div>';
+  if (!acts.length){
+    h += '<div style="font-size:12px;color:var(--text3);padding:6px 0">No payments logged yet — use the buttons below.</div>';
+  }
+  const META = {
+    monthly:  { ic:'💳', c:'var(--green)',  s:'−', lbl:'Monthly payment' },
+    extra:    { ic:'⚡', c:'var(--green)',  s:'−', lbl:'Extra payment' },
+    interest: { ic:'📈', c:'var(--red)',    s:'+', lbl:'Interest charge' }
+  };
+  shown.forEach(function(a){
+    const m = META[a.kind];
+    h += '<div class="loan-act"><div class="loan-act-l"><span class="loan-act-ic">' + m.ic + '</span>'
+      + '<div><div class="loan-act-lbl">' + m.lbl + '</div>'
+      + '<div class="loan-act-date">' + fmtDate(a.date) + (a.note ? ' · ' + a.note : '') + '</div></div></div>'
+      + '<div class="loan-act-amt" style="color:' + m.c + '">' + m.s + eur(a.amount) + '</div></div>';
+  });
+  if (acts.length > 5){
+    h += '<div style="text-align:center;padding:8px"><span style="color:var(--accent);cursor:pointer;font-size:12px;font-weight:700" onclick="toggleLoanAct(\'' + loanId + '\')">'
+      + (expanded ? 'Show less ▲' : ('Show all ' + acts.length + ' ▼')) + '</span></div>';
+  }
+
+  // Actions
+  h += '<div class="loan-actions">'
+    + '<button class="btn btn-primary btn-sm" onclick="openAddMonthlyPayment(\'' + loanId + '\')">💳 Log Payment</button>'
+    + '<button class="btn btn-ghost btn-sm" onclick="openAddExtraPayment(\'' + loanId + '\')">⚡ Extra</button>'
+    + '<button class="btn btn-ghost btn-sm" onclick="openAddInterestCharge(\'' + loanId + '\')">📈 Interest</button>'
+    + '<button class="btn btn-ghost btn-sm" onclick="openUpdateBalance(\'' + loanId + '\')">⚙️ Adjust</button>'
+    + '</div>';
+
+  h += '</div>';
+  return h;
+}
+
+function renderLoans() {
+  const el = document.getElementById('page-loans');
+  const loans = Object.keys(state.loans).map(function(k){ return state.loans[k]; }).filter(Boolean);
+  const colors = ['var(--green)', 'var(--blue)', 'var(--accent)', 'var(--orange)'];
+
+  let totalBal = 0, totalBase = 0, totalPaid = 0, totalMonthly = 0, totalSaved = 0;
+  let latestPayoff = null, anyNever = false, allDone = true;
+  loans.forEach(function(l){
+    const base = l.peakBalance || l.original || l.currentBalance || 0;
+    totalBal     += l.currentBalance || 0;
+    totalBase    += base;
+    totalPaid    += Math.max(0, base - (l.currentBalance || 0));
+    totalMonthly += l.monthly || 0;
+    totalSaved   += l.interestSaved || 0;
+    const p = loanPayoff(l);
+    if (!p.done) allDone = false;
+    if (p.neverPaysOff) anyNever = true;
+    else if (p.payoffDate && (!latestPayoff || p.payoffDate > latestPayoff)) latestPayoff = p.payoffDate;
+  });
+  const pct = totalBase > 0 ? Math.min(100, totalPaid / totalBase * 100) : 0;
+
+  const foot = totalBal <= 0
+    ? '🎉 All debts cleared!'
+    : anyNever
+      ? '⚠️ A monthly payment doesn\'t cover its interest — adjust it below.'
+      : latestPayoff
+        ? '🏁 Projected debt-free by <strong style="color:var(--text)">' + fmtMonthYear(latestPayoff) + '</strong>'
+        : '';
+
+  let html = `
+  <div class="page-header"><div><div class="page-title">Loans</div><div class="page-sub">DEBT PAYOFF</div></div></div>
+
+  <div class="card inv-hero" style="background:linear-gradient(135deg,rgba(255,92,92,.16),rgba(124,111,255,.07));border-color:rgba(255,92,92,.3)">
+    <div class="card-label">Total Debt Remaining</div>
+    <div class="inv-hero-val" style="color:var(--red)">${eur(totalBal)}</div>
+    <div class="inv-hero-row">
+      <span class="gain-pill up">▼ ${eur(totalPaid)} paid · ${pct.toFixed(1)}%</span>
+      <span class="inv-hero-sub">${eur(totalMonthly)}/mo · ${eur(totalSaved)} interest saved</span>
+    </div>
+    <div class="alloc-bar"><div class="alloc-seg" style="flex:${Math.max(totalPaid,0.0001)};background:var(--green)"></div><div class="alloc-seg" style="flex:${Math.max(totalBal,0.0001)};background:var(--bg4)"></div></div>
+    ${foot ? `<div class="loan-hero-foot">${foot}</div>` : ''}
+  </div>
+  `;
+
+  loans.forEach(function(l, i){ html += renderLoanCard(l.id, colors[i % colors.length]); });
+  el.innerHTML = html;
 }
 
 function openAddExtraPayment(loanId) {
