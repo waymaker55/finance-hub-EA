@@ -1249,6 +1249,14 @@ function calcNetSecondary(grossMonthly) {
   return { gross: grossMonthly, incomeTax, usc, prsi, ff, lottery:0, total, net: grossMonthly - total };
 }
 
+// Net for an employer's monthly gross, honouring the editable "primary job" flag.
+// Used by the dashboard, shifts summary and budget estimate so they all agree.
+function empNet(empId, gross) {
+  if (!gross || gross <= 0) return 0;
+  const emp = EMPLOYERS[empId] || {};
+  return (emp.isPrimary ? calcNetPrimary(gross) : calcNetSecondary(gross)).net;
+}
+
 // ══════════════════════════════════════════════════════════
 // SHIFT PAY ENGINE
 // ══════════════════════════════════════════════════════════
@@ -1376,16 +1384,20 @@ function renderDash() {
   const shifts = getShiftsForMonth(ym);
   const monthGross = totalGross(shifts);
   const empGroups = groupShiftsByEmp(shifts);
-  const pmvGross = totalGross(empGroups.pmv || []);
-  const mistyGross = totalGross(empGroups.misty || []);
-  const mcmaGross = totalGross(empGroups.mcma || []);
-  const kairoGross = totalGross(empGroups.kairo || []);
-
-  const pmvNet = pmvGross > 0 ? calcNetPrimary(pmvGross).net : 0;
-  const mistyNet = mistyGross > 0 ? calcNetSecondary(mistyGross).net : 0;
-  const mcmaNet = mcmaGross > 0 ? calcNetSecondary(mcmaGross).net : 0;
-  const kairoNet = kairoGross > 0 ? calcNetSecondary(kairoGross).net : 0;
-  const totalNet = pmvNet + mistyNet + mcmaNet + kairoNet;
+  // Generic per-employer net + tags: uses editable names and the isPrimary flag.
+  const EMP_TAGCOLORS = { pmv:'tag-purple', misty:'tag-blue', mcma:'tag-orange', kairo:'tag-green' };
+  const TAG_PALETTE = ['tag-purple','tag-blue','tag-orange','tag-green','tag-yellow'];
+  let totalNet = 0, incomeTags = '', _tagIdx = 0;
+  Object.keys(empGroups).forEach(function(empId){
+    const g = totalGross(empGroups[empId]);
+    if (g <= 0) return;
+    const emp = EMPLOYERS[empId] || {};
+    const net = empNet(empId, g);
+    totalNet += net;
+    const cls = EMP_TAGCOLORS[empId] || TAG_PALETTE[_tagIdx % TAG_PALETTE.length];
+    _tagIdx++;
+    incomeTags += '<span class="tag ' + cls + '">' + (emp.name || empId) + ' ' + eur(net) + '</span>';
+  });
 
   const bm = state.budget.months[ym] || {};
   const _bmi = bm.income || {};
@@ -1464,10 +1476,7 @@ function renderDash() {
     <div class="card-value" style="color:var(--green);font-size:32px">${eur(totalNet)}</div>
     <div class="card-sub">${eur(monthGross)} gross · ${shifts.length} shifts</div>
     <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
-      ${pmvGross>0?`<span class="tag tag-purple">PMV ${eur(pmvNet)}</span>`:''}
-      ${mistyGross>0?`<span class="tag tag-blue">Misty ${eur(mistyNet)}</span>`:''}
-      ${mcmaGross>0?`<span class="tag tag-orange">MCMA ${eur(mcmaNet)}</span>`:''}
-      ${kairoGross>0?`<span class="tag tag-green">Kairo ${eur(kairoNet)}</span>`:''}
+      ${incomeTags}
     </div>
   </div>
 
@@ -1536,7 +1545,6 @@ let budgetYear = new Date().getFullYear();
 let budgetOverviewMonth = currentMonthKey();
 let shiftsTab = 'log';
 let shiftsMonth = currentMonthKey();
-let loanExpanded = {l682_ep: false, l336_ep: false};
 
 // ══════════════════════════════════════════════════════════
 // BUDGET PAGE
@@ -2481,14 +2489,11 @@ function renderShiftsSummary() {
     </div>`;
   }
 
-  // Total
+  // Total — net per employer honours the editable isPrimary flag (shared with dashboard)
   const allGross = totalGross(shifts);
-  const pmvGross = totalGross(empGroups.pmv||[]);
-  const otherGross = allGross - pmvGross;
-  const pmvNet2 = pmvGross>0?calcNetPrimary(pmvGross).net:0;
-  const otherNet = Object.entries(empGroups).filter(([k])=>k!=='pmv').reduce((a,[k,v])=>{
-    const g=totalGross(v); return a+(g>0?calcNetSecondary(g).net:0);},0);
-  const totalNet2 = pmvNet2+otherNet;
+  const totalNet2 = Object.keys(empGroups).reduce(function(a, empId){
+    return a + empNet(empId, totalGross(empGroups[empId]));
+  }, 0);
 
   html += `
   <div class="card" style="border-color:var(--accent);background:rgba(124,111,255,.08)">
@@ -3106,7 +3111,7 @@ function renderInvestETFs(T) {
         + '<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0"><span style="color:var(--text2)">Currency conversion fees</span><span style="font-family:var(--mono);color:var(--red)">-' + eur(fees) + '</span></div>'
         + '<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0"><span style="color:var(--text2)">Fee % of investment</span><span style="font-family:var(--mono);color:var(--yellow)">' + (cost>0?(fees/cost*100).toFixed(2):'0.00') + '%</span></div>'
         + '<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-top:1px solid var(--border);margin-top:4px"><span style="color:var(--text2)">Break-even price (USD)</span><span style="font-family:var(--mono)">'
-        + (etf.units > 0 ? '$' + (costIncFees * (currentFX||1.08) / etf.units).toFixed(4) : '—')
+        + (etf.units > 0 ? '$' + (costIncFees * (currentFX||usdFallback()) / etf.units).toFixed(4) : '—')
         + '</span></div></div>';
 
       // Buy history
@@ -3205,7 +3210,7 @@ function renderInvestStocks(T) {
           + (divs>0 ? '<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0"><span style="color:var(--text2)">Dividends received</span><span style="font-family:var(--mono);color:var(--green)">+' + eur(divs) + '</span></div>' : '')
           + '<div style="border-top:1px solid var(--border);margin-top:4px;padding-top:6px;display:flex;justify-content:space-between;font-size:13px;font-weight:700">'
           + '<span>Net P&L</span><span style="color:' + (gainAfterFees>=0?'var(--green)':'var(--red)') + '">' + (gainAfterFees>=0?'+':'') + eur(gainAfterFees) + '</span></div>'
-          + '<div style="font-size:10px;color:var(--text3);margin-top:4px">Break-even: $' + (s.units>0 ? (costIncFees * (currentFX||1.08) / s.units).toFixed(2) : '—') + '</div>'
+          + '<div style="font-size:10px;color:var(--text3);margin-top:4px">Break-even: $' + (s.units>0 ? (costIncFees * (currentFX||usdFallback()) / s.units).toFixed(2) : '—') + '</div>'
           + '</div>';
       }
 
@@ -3290,7 +3295,7 @@ function renderInvestCrypto(T) {
     totalCost += cost;
     const priceLine = state.invPrices[c.ticker];
     const currentUSD = priceLine?.price;
-    const currentEUR = currentUSD ? currentUSD / (priceLine.rate||1.08) : null;
+    const currentEUR = currentUSD ? currentUSD / (priceLine.rate||usdFallback()) : null;
     const currentVal = currentEUR ? c.units * currentEUR : null;
     const gain = currentVal ? currentVal - cost : null;
 
@@ -3585,7 +3590,7 @@ function updatePriceWithFX(assetId, assetType) {
   const fxEl    = document.getElementById('fx-' + assetId);
   if (!priceEl) return;
   const price = parseFloat(priceEl.value);
-  const fx    = parseFloat(fxEl?.value || 1.08);
+  const fx    = parseFloat(fxEl?.value || usdFallback());
   if (!price) { toast('Enter a price'); return; }
   let ticker = '';
   if (assetType==='etf')   ticker = (state.investments.etfs.find(function(e){return e.id===assetId;})||{}).ticker;
@@ -4363,6 +4368,10 @@ function saveEmployer(id) {
   e.payFreq   = document.getElementById('emp-freq').value;
   e.isPrimary = document.getElementById('emp-primary').checked;
   state.employers[id] = e;
+  // Only one job can be primary (tax credits apply once) — clear the flag on the others.
+  if (e.isPrimary) {
+    Object.keys(state.employers).forEach(function(k){ if (k !== id) state.employers[k].isPrimary = false; });
+  }
   applyEmployers();
   saveState(); closeModal(); renderMore(); toast('Income source updated ✓');
 }
